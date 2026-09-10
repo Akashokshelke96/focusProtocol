@@ -1,0 +1,280 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pollination Image Generator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #0f0f12;
+      color: #e8e8e8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+    .container { width: 100%; max-width: 600px; }
+    h1 { font-size: 1.75rem; font-weight: 600; margin-bottom: 1.5rem; text-align: center; }
+    .card {
+      background: #1a1a1f;
+      border: 1px solid #2a2a32;
+      border-radius: 12px;
+      padding: 1.5rem;
+      margin-bottom: 1rem;
+    }
+    .input-group { display: flex; flex-direction: column; gap: 0.75rem; }
+    label { font-size: 0.875rem; font-weight: 500; color: #aaa; }
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      padding: 0.875rem;
+      background: #121215;
+      border: 1px solid #2a2a32;
+      border-radius: 8px;
+      color: #e8e8e8;
+      font-family: inherit;
+      font-size: 1rem;
+      resize: vertical;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: #3b82f6; }
+    .options { display: grid; grid-template-columns: repeat(2, 1fr); gap: 0.75rem; }
+    .select-group { display: flex; flex-direction: column; gap: 0.375rem; }
+    select {
+      padding: 0.625rem 0.875rem;
+      background: #121215;
+      border: 1px solid #2a2a32;
+      border-radius: 8px;
+      color: #e8e8e8;
+      font-family: inherit;
+      font-size: 0.875rem;
+      outline: none;
+    }
+    select:focus { border-color: #3b82f6; }
+    button {
+      width: 100%;
+      padding: 0.875rem 1.5rem;
+      background: linear-gradient(135deg, #3b82f6 0%, #2563eb 100%);
+      border: none;
+      border-radius: 8px;
+      color: white;
+      font-family: inherit;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.2s, transform 0.1s;
+    }
+    button:hover:not(:disabled) { opacity: 0.9; }
+    button:active:not(:disabled) { transform: scale(0.98); }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn-text { display: inline-flex; align-items: center; justify-content: center; gap: 0.5rem; }
+    .spinner {
+      width: 18px; height: 18px;
+      border: 2px solid transparent;
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    button.loading .spinner { display: block; }
+    button.loading .btn-label { display: none; }
+    .result { display: none; flex-direction: column; gap: 1rem; }
+    .result.visible { display: flex; }
+    .result img { width: 100%; max-height: 600px; object-fit: contain; border-radius: 8px; border: 1px solid #2a2a32; }
+    .result-actions { display: flex; gap: 0.75rem; }
+    .result-actions button { flex: 1; }
+    .secondary { background: #2a2a32; }
+    .secondary:hover:not(:disabled) { background: #33333d; }
+    .error { background: #3d1a1a; border-color: #7f1d1d; color: #fca5a5; padding: 0.75rem; border-radius: 8px; font-size: 0.875rem; display: none; }
+    .error.visible { display: block; }
+    .footer { text-align: center; margin-top: 2rem; font-size: 0.75rem; color: #666; }
+    .footer a { color: #3b82f6; text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>Pollination Image Generator</h1>
+
+    <div class="card">
+      <div class="input-group">
+        <label for="prompt">Prompt</label>
+        <textarea id="prompt" placeholder="Describe the image you want to generate...&#10;Example: cinematic oil painting of sun and moon lovers meeting during eclipse, romantic, ethereal lighting" required></textarea>
+
+        <div class="options">
+          <div class="select-group">
+            <label for="model">Model</label>
+            <select id="model">
+              <option value="flux">Flux (default)</option>
+              <option value="gptimage">GPT Image</option>
+              <option value="ideogram-v4-quality">Ideogram v4 Quality</option>
+              <option value="seedream5">Seedream 5</option>
+              <option value="krea">Krea</option>
+              <option value="dreamshaper">Dreamshaper</option>
+            </select>
+          </div>
+          <div class="select-group">
+            <label for="aspect">Orientation</label>
+            <select id="aspect">
+              <option value="1080x1920">Portrait 9:16 (1080x1920)</option>
+              <option value="1920x1080">Landscape 16:9 (1920x1080)</option>
+              <option value="1080x1080">Square 1:1 (1080x1080)</option>
+              <option value="1920x1920">Square HD 1:1 (1920x1920)</option>
+              <option value="1920x2560">Portrait HD 9:16 (1920x2560)</option>
+              <option value="2560x1920">Landscape HD 16:9 (2560x1920)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="options">
+          <div class="select-group">
+            <label for="quality">Quality</label>
+            <select id="quality">
+              <option value="low">Low</option>
+              <option value="medium">Medium</option>
+              <option value="high">High</option>
+              <option value="hd" selected>HD</option>
+            </select>
+          </div>
+          <div class="select-group">
+            <label for="style">Style</label>
+            <select id="style">
+              <option value="">Default</option>
+              <option value="cinematic">Cinematic</option>
+              <option value="photorealistic">Photorealistic</option>
+              <option value="artistic">Artistic</option>
+              <option value="anime">Anime</option>
+              <option value="oil-painting">Oil Painting</option>
+              <option value="watercolor">Watercolor</option>
+              <option value="sketch">Sketch</option>
+            </select>
+          </div>
+        </div>
+
+        <button id="generateBtn" type="button">
+          <span class="btn-text">
+            <span class="btn-label">Generate Image</span>
+            <span class="spinner"></span>
+          </span>
+        </button>
+
+        <div id="error" class="error"></div>
+      </div>
+    </div>
+
+    <div class="card result" id="resultCard">
+      <img id="resultImage" alt="Generated image">
+      <div class="result-actions">
+        <button id="downloadBtn" class="secondary" type="button">Download</button>
+        <button id="newBtn" class="secondary" type="button">New Prompt</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Powered by <a href="https://pollinations.ai" target="_blank" rel="noopener">Pollinations.ai</a>
+  </div>
+
+  <script>
+    const API_KEY = 'sk_Zc9ioCWTnBCYwNz0ZZEdnTdteFEsf3nm';
+    const BASE_URL = 'https://gen.pollinations.ai';
+
+    const promptEl = document.getElementById('prompt');
+    const modelEl = document.getElementById('model');
+    const aspectEl = document.getElementById('aspect');
+    const qualityEl = document.getElementById('quality');
+    const styleEl = document.getElementById('style');
+    const generateBtn = document.getElementById('generateBtn');
+    const downloadBtn = document.getElementById('downloadBtn');
+    const newBtn = document.getElementById('newBtn');
+    const resultCard = document.getElementById('resultCard');
+    const resultImage = document.getElementById('resultImage');
+    const errorEl = document.getElementById('error');
+
+    let currentBlob = null;
+
+    function showError(msg) {
+      errorEl.textContent = msg;
+      errorEl.classList.add('visible');
+    }
+    function hideError() { errorEl.classList.remove('visible'); }
+
+    function parseAspect(aspect) {
+      const [w, h] = aspect.split('x').map(Number);
+      return { width: w, height: h };
+    }
+
+    async function generateImage(prompt, model, width, height, quality, style) {
+      const enhancedPrompt = style ? `${prompt}, ${style}` : prompt;
+      const encodedPrompt = encodeURIComponent(enhancedPrompt.trim());
+      const url = `${BASE_URL}/image/${encodedPrompt}`;
+      const params = new URLSearchParams({ model, width: String(width), height: String(height), quality, key: API_KEY });
+
+      const response = await fetch(`${url}?${params}`, { method: 'GET' });
+      if (!response.ok) {
+        const err = await response.text().catch(() => '');
+        throw new Error(`HTTP ${response.status}: ${err || 'Failed to generate image'}`);
+      }
+      return response.blob();
+    }
+
+    generateBtn.addEventListener('click', async () => {
+      const prompt = promptEl.value.trim();
+      if (!prompt) { showError('Please enter a prompt'); return; }
+
+      hideError();
+      const { width, height } = parseAspect(aspectEl.value);
+      const model = modelEl.value;
+      const quality = qualityEl.value;
+      const style = styleEl.value;
+
+      generateBtn.classList.add('loading');
+      generateBtn.disabled = true;
+
+      try {
+        const blob = await generateImage(prompt, model, width, height, quality, style);
+        currentBlob = blob;
+        const url = URL.createObjectURL(blob);
+        resultImage.src = url;
+        resultCard.classList.add('visible');
+        resultCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      } catch (e) {
+        showError(e.message);
+      } finally {
+        generateBtn.classList.remove('loading');
+        generateBtn.disabled = false;
+      }
+    });
+
+    downloadBtn.addEventListener('click', () => {
+      if (!currentBlob) return;
+      const url = URL.createObjectURL(currentBlob);
+      const a = document.createElement('a');
+      a.href = url;
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      a.download = `pollination_${timestamp}.jpg`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    newBtn.addEventListener('click', () => {
+      resultCard.classList.remove('visible');
+      resultImage.src = '';
+      currentBlob = null;
+      promptEl.focus();
+    });
+
+    promptEl.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey && !generateBtn.disabled) {
+        e.preventDefault();
+        generateBtn.click();
+      }
+    });
+  </script>
+</body>
+</html>

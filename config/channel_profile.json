@@ -1,0 +1,218 @@
+{
+  "channel_name": "Silent Dark Blues",
+  "channel_description": "Dark blues instrumental music visualizer - gentleman noir aesthetic",
+
+  "visual_identity": {
+    "era": "1920s-1930s British noir",
+    "primary_subject": "Gentleman gangster (Peaky Blinders archetype)",
+    "character": {
+      "archetype": "Sophisticated gentleman, isolated, introspective",
+      "appearance": "Smoking, well-dressed suit, fedora/hat, suspenders",
+      "pose": "Contemplative, looking out window, holding whiskey, smoking",
+      "consistency": "SAME CHARACTER across all hero images (critical)"
+    },
+    "environments": [
+      "Dark office with desk and whiskey",
+      "Smoky gentleman's club or pub",
+      "City street at night with rain",
+      "Car interior (1920s-1930s)",
+      "Hotel room with cigarette smoke",
+      "Factory or warehouse (moody)"
+    ],
+    "palette": {
+      "primary": ["black", "charcoal", "#1a1a1a", "#2d2d2d"],
+      "secondary": ["dark blue", "steel blue", "#1a2a4a", "#2a3a5a"],
+      "accent": ["muted amber", "#8b7500", "bronze", "gold"],
+      "mood": "Desaturated, high-contrast, moody"
+    },
+    "lighting": {
+      "style": "Low-key noir",
+      "techniques": [
+        "Rim lighting on character",
+        "Smoke backlit and rim-lit",
+        "Single source light (window/lamp)",
+        "Deep shadows",
+        "Cigarette smoke visible in light"
+      ]
+    },
+    "composition": {
+      "framing": "16:9 aspect ratio, 1920x1080 minimum",
+      "subject_position": "Off-center, looking into frame",
+      "depth": "Layered with foreground smoke/elements",
+      "cinematography": "Cinematic, film noir"
+    },
+    "color_grading": {
+      "lut_name": "dark_blues_noir.cube",
+      "treatment": "Dark, cool, desaturated",
+      "contrast": "High (crush blacks, lift shadows carefully)",
+      "saturation": "Reduce all colors except dark blues, ambers",
+      "temperature": "Cool (blue-gray tones)",
+      "grain": "Subtle film grain (matches vintage aesthetic)"
+    },
+    "rejections": [
+      "Modern/contemporary imagery",
+      "Bright colors or high saturation",
+      "Wrong character type (not gentleman)",
+      "Wrong era (modern people)",
+      "Unrelated to noir/blues genre",
+      "Casual/informal clothing",
+      "Daytime/bright lighting",
+      "Female subjects (unless context clear)",
+      "Comic/cartoonish styling"
+    ]
+  },
+
+  "music_identity": {
+    "genre": "Dark Blues",
+    "bpm_range": {
+      "min": 55,
+      "max": 80,
+      "optimal": "65-75"
+    },
+    "instrumentation": [
+      "Slide guitar (primary)",
+      "Upright bass",
+      "Drums (sparse, minimalist)",
+      "Piano (optional, sparse)",
+      "Harmonica (optional)"
+    ],
+    "mood": [
+      "Melancholic",
+      "Lonely",
+      "Masculine",
+      "Introspective",
+      "Smoky",
+      "Contemplative"
+    ],
+    "style": "Gentleman's club late-night atmosphere",
+    "energy_level": "Low to very low (0.2-0.4 scale)",
+    "vocal": false,
+    "instrumental_only": true,
+    "duration_range": {
+      "min_seconds": 240,
+      "max_seconds": 360,
+      "target_seconds": 300
+    },
+    "audio_requirements": {
+      "format": "MP3 or WAV",
+      "bitrate": "320kbps minimum",
+      "sample_rate": "44.1kHz or higher",
+      "channels": "Stereo",
+      "quality_checks": [
+        "No clipping or distortion",
+        "No sudden silences (fade-outs acceptable)",
+        "No artifacts or glitches",
+        "Consistent volume envelope"
+      ]
+    }
+  },
+
+  "video_standards": {
+    "resolution": "1920x1080",
+    "fps": 30,
+    "aspect_ratio": "16:9",
+    "codec": "H.264",
+    "audio_codec": "AAC",
+    "shot_duration": {
+      "min_seconds": 30,
+      "max_seconds": 75,
+      "optimal_seconds": 45
+    },
+    "motion": {
+      "enabled": true,
+      "type": "Subtle Ken Burns",
+      "strength": 0.15,
+      "description": "Barely noticeable zoom or pan - viewer should not consciously notice camera moving"
+    },
+    "transitions": {
+      "type": "Crossfade only",
+      "duration_seconds": 2,
+      "no_wipes": true,
+      "no_flashes": true
+    },
+    "narration": false,
+    "captions": false,
+    "text_overlay": "Minimal - channel name only at start (3 seconds)"
+  },
+
+  "quality_gates": {
+    "visual_style_score_threshold": 0.60,
+    "style_scoring_criteria": {
+      "era_relevance": "1920s-1930s appearance (0.0-1.0)",
+      "character_match": "Gentleman/gangster archetype (0.0-1.0)",
+      "palette_match": "Dark, cool, noir aesthetic (0.0-1.0)",
+      "lighting_quality": "Low-key, cinematic (0.0-1.0)",
+      "composition": "Framed well, interesting depth (0.0-1.0)",
+      "general_quality": "Resolution, focus, clarity (0.0-1.0)"
+    },
+    "rejection_criteria": [
+      "Score < 0.60",
+      "Wrong character type",
+      "Modern elements visible",
+      "Bright lighting or colors",
+      "Poor composition or focus",
+      "Duplicate of already-used image"
+    ],
+    "deduplication": "No repeated hero images in same video"
+  },
+
+  "hero_image_generation": {
+    "count": "5-8 unique hero images per video",
+    "source_preference": [
+      "Pinterest (primary - period imagery)",
+      "Pexels (secondary - atmospheric)",
+      "Curated library (tertiary - verified matches)"
+    ],
+    "search_process": {
+      "step1": "Use channel profile to build search queries",
+      "step2": "NOT arbitrary creative invention",
+      "step3": "Example query: 'gentleman 1920s noir smoking suit fedora low-key lighting'",
+      "step4": "Search for 'dark blue noir atmosphere' for atmospheric shots",
+      "step5": "Filter heavily for style match"
+    }
+  },
+
+  "atmospheric_elements": {
+    "sources": "Pexels only",
+    "types": [
+      "Cigarette smoke",
+      "Rain on window",
+      "Fire/flame (candle, cigarette lighter)",
+      "Whiskey being poured",
+      "City lights at night",
+      "Lamp light through fog"
+    ],
+    "usage": "Supporting only - never as primary visual",
+    "duration": "5-15 seconds (interspersed between hero images)"
+  },
+
+  "output_characteristics": {
+    "feels_like": "One continuous noir film about a gentleman smoking alone in a dark room",
+    "looks_like": "Silent film with dark blue color grade, consistent character, contemplative pacing",
+    "NOT": [
+      "Random modern stock footage montage",
+      "Unrelated character switching",
+      "Bright or colorful images",
+      "Aggressive camera movement",
+      "Narration or voiceover",
+      "Fast cuts or MTV-style editing",
+      "Generic AI slideshow"
+    ]
+  },
+
+  "gemini_constraints": {
+    "instruction": "Gemini DOES NOT invent visual stories",
+    "process": [
+      "1. Load channel profile",
+      "2. Assemble hero image prompts FROM profile components",
+      "3. Generate 5-8 specific image generation prompts",
+      "4. Each prompt includes: character, action, environment, lighting, color",
+      "5. All constrained to profile - no creative freedom"
+    ],
+    "example_output": [
+      "1920s British gentleman in dark office, smoking cigarette, looking out window at rain, low-key rim lighting, dark blue-gray color grade, moody atmosphere",
+      "Man in suit and fedora sitting alone in smoky pub, holding whiskey glass, contemplative expression, dim amber lamp light, deep shadows, film noir aesthetic",
+      "Gentleman at desk with cigarette smoke backlit by window light, dark charcoal suit, leather chair, office furniture, cool dark blue tones"
+    ]
+  }
+}

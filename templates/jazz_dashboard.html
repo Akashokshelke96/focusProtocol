@@ -1,0 +1,945 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jazz Video Generator - Dashboard</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --ink: #17212b;
+            --ink-soft: #243341;
+            --paper: #f4f1eb;
+            --panel: rgba(255, 255, 255, 0.94);
+            --line: #d9d2c7;
+            --accent: #b45f45;
+            --accent-dark: #7f3f31;
+            --muted: #68727a;
+            --success: #3d7a61;
+        }
+
+        body {
+            font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+            -webkit-font-smoothing: antialiased;
+            text-rendering: optimizeLegibility;
+            background: linear-gradient(135deg, #f4f1eb 0%, #e4e8e5 100%);
+            color: var(--ink);
+            min-height: 100vh;
+        }
+
+        header {
+            background: rgba(23, 33, 43, 0.96);
+            padding: 20px;
+            border-bottom: 3px solid var(--accent);
+            box-shadow: 0 4px 18px rgba(23, 33, 43, 0.16);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .logo {
+            font-size: 24px;
+            font-weight: bold;
+            color: #f3d1c5;
+            letter-spacing: 0.02em;
+        }
+
+        .health-status {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        .status-dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: #7dc39b;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 20px;
+        }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 30px;
+            margin-bottom: 30px;
+            box-shadow: 0 12px 30px rgba(23, 33, 43, 0.08);
+        }
+
+        .panel h2 {
+            color: var(--accent-dark);
+            margin-bottom: 20px;
+            font-size: 20px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        .control-group {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .control-item {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+
+        label {
+            color: var(--accent-dark);
+            font-weight: 500;
+            font-size: 14px;
+        }
+
+        input[type="radio"],
+        input[type="checkbox"],
+        input[type="number"] {
+            padding: 10px;
+            background: #fffdfa;
+            border: 1px solid var(--line);
+            border-radius: 5px;
+            color: var(--ink);
+            font-size: 14px;
+        }
+
+        input[type="radio"]:checked,
+        input[type="checkbox"]:checked {
+            background: rgba(0, 212, 255, 0.3);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 30px;
+            border: 1px solid var(--accent);
+            background: transparent;
+            color: var(--accent-dark);
+            border-radius: 5px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        button:hover {
+            background: #f3d1c5;
+            box-shadow: 0 6px 16px rgba(180, 95, 69, 0.18);
+            transform: translateY(-2px);
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn-primary {
+            background: var(--accent);
+            color: #fffaf5;
+            border: 1px solid var(--accent);
+        }
+
+        .btn-primary:hover {
+            box-shadow: 0 0 30px rgba(0, 212, 255, 0.5);
+        }
+
+        .btn-danger {
+            background: #fff0ed;
+            border-color: #b45f45;
+            color: #8d3f31;
+        }
+
+        .btn-danger:hover {
+            background: rgba(255, 69, 69, 0.2);
+            box-shadow: 0 0 20px rgba(255, 69, 69, 0.3);
+        }
+
+        .progress-container {
+            margin-top: 30px;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #e8e4dc;
+            border-radius: 15px;
+            overflow: hidden;
+            border: 1px solid var(--line);
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, var(--accent), #d99c76);
+            width: 0%;
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #000;
+            font-weight: bold;
+            font-size: 12px;
+        }
+
+        .status-message {
+            margin-top: 15px;
+            padding: 15px;
+            background: #f8e9e3;
+            border-left: 4px solid var(--accent);
+            border-radius: 5px;
+            color: var(--accent-dark);
+        }
+
+        .preview-section {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 20px;
+            margin-top: 30px;
+        }
+
+        .video-preview {
+            background: #000;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+            aspect-ratio: 16 / 9;
+        }
+
+        .video-preview video {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .metadata-display {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(0, 212, 255, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            overflow-y: auto;
+            max-height: 400px;
+        }
+
+        .metadata-item {
+            margin-bottom: 15px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(0, 212, 255, 0.2);
+        }
+
+        .metadata-item:last-child {
+            border-bottom: none;
+        }
+
+        .metadata-label {
+            color: var(--accent-dark);
+            font-weight: 600;
+            font-size: 12px;
+            text-transform: uppercase;
+            margin-bottom: 5px;
+        }
+
+        .metadata-value {
+            color: var(--ink);
+            font-size: 14px;
+            word-break: break-word;
+        }
+
+        .timing-card {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            margin-top: 24px;
+            padding: 18px 22px;
+            background: #f7eee8;
+            border: 1px solid #e2c2b5;
+            border-radius: 8px;
+        }
+
+        .timing-card .metadata-label {
+            margin-bottom: 3px;
+        }
+
+        .timing-value {
+            color: var(--accent-dark);
+            font-family: Georgia, serif;
+            font-size: 28px;
+            font-weight: 700;
+            letter-spacing: 0.02em;
+        }
+
+        .jobs-list {
+            margin-top: 30px;
+        }
+
+        .job-item {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid rgba(0, 212, 255, 0.2);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .job-item:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: rgba(0, 212, 255, 0.5);
+            transform: translateX(5px);
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .job-id {
+            color: #00d4ff;
+            font-weight: 600;
+            font-family: monospace;
+        }
+
+        .job-status {
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-completed {
+            background: rgba(76, 175, 80, 0.2);
+            color: #4caf50;
+        }
+
+        .status-failed {
+            background: rgba(255, 69, 69, 0.2);
+            color: #ff4545;
+        }
+
+        .status-running {
+            background: rgba(0, 212, 255, 0.2);
+            color: #00d4ff;
+        }
+
+        .job-info {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            font-size: 13px;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .info-label {
+            color: #666;
+            text-transform: uppercase;
+            font-size: 11px;
+        }
+
+        .info-value {
+            color: #e0e0e0;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+
+        .btn-small {
+            padding: 8px 15px;
+            font-size: 12px;
+        }
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 12px;
+            margin-top: 50px;
+        }
+
+        @media (max-width: 768px) {
+            .control-group {
+                grid-template-columns: 1fr;
+            }
+
+            .preview-section {
+                grid-template-columns: 1fr;
+            }
+
+            .header-content {
+                flex-direction: column;
+                gap: 20px;
+            }
+
+            .container {
+                margin: 20px auto;
+            }
+        }
+
+        .loading {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #00d4ff;
+            animation: loading 1.4s infinite;
+            margin-right: 5px;
+        }
+
+        @keyframes loading {
+            0%, 100% { opacity: 0.3; }
+            50% { opacity: 1; }
+        }
+
+        .spinner {
+            border: 3px solid rgba(0, 212, 255, 0.2);
+            border-top: 3px solid #00d4ff;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            margin-right: 10px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">🎵 Jazz Video Generator</div>
+            <div class="health-status">
+                <span class="status-dot"></span>
+                <span id="system-status">System Ready</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- Generation Control Panel -->
+        <div class="panel">
+            <h2>Generate New Video</h2>
+
+            <div class="control-group">
+                <div class="control-item">
+                    <label>Generation Mode</label>
+                    <div style="display: flex; gap: 15px;">
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" name="mode" value="production" checked>
+                            Production
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px;">
+                            <input type="radio" name="mode" value="test">
+                            Test (3 min)
+                        </label>
+                    </div>
+                </div>
+
+                <div class="control-item">
+                    <label for="video-count">Number of Videos</label>
+                    <input type="number" id="video-count" min="1" max="10" value="1">
+                </div>
+
+                <div class="control-item">
+                    <label for="duration-minutes">Video Duration (minutes)</label>
+                    <input type="number" id="duration-minutes" min="1" max="180" value="3">
+                </div>
+            </div>
+
+            <div class="controls" style="display: flex; gap: 24px; margin: 16px 0;">
+                <label><input type="checkbox" id="waveform-enabled" {% if settings.waveform_enabled %}checked{% endif %}> Enable waveform</label>
+                <label><input type="checkbox" id="waveform-filter-enabled" {% if settings.waveform_filter_enabled %}checked{% endif %}> Enable filter / smoothing</label>
+                <label><input type="checkbox" id="watermark-enabled" {% if settings.watermark_enabled %}checked{% endif %}> Enable watermark</label>
+                <label><input type="checkbox" id="subscribe-overlay-enabled" {% if settings.subscribe_overlay_enabled %}checked{% endif %}> Show subscribe popup every 5 minutes</label>
+            </div>
+
+            <div class="button-group">
+                <button class="btn-primary" id="btn-start" onclick="startGeneration()">
+                    ▶ Start Generation
+                </button>
+                <button class="btn-danger" id="btn-cancel" onclick="cancelGeneration()" disabled>
+                    ⏹ Cancel
+                </button>
+                <button onclick="refreshStatus()">
+                    🔄 Refresh Status
+                </button>
+            </div>
+
+            <!-- Progress Section -->
+            <div id="progress-section" style="display: none; margin-top: 30px;">
+                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
+                    <span class="spinner"></span>
+                    <span id="progress-message">Initializing...</span>
+                </div>
+
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progress-fill" style="width: 0%">
+                            <span id="progress-percent">0%</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="status-message" id="status-message" style="margin-top: 15px;">
+                    Waiting to start...
+                </div>
+            </div>
+        </div>
+
+            <div class="panel">
+                <h2>Component Status</h2>
+                <div id="component-status" class="job-info">Checking components...</div>
+                <div class="button-group" style="margin-top: 20px;">
+                    <button onclick="window.location.href='/api/jazz/youtube/connect'">Connect YouTube</button>
+                    <button onclick="publishPendingVideos()">Publish pending videos</button>
+                    <button onclick="showPublishingQueue()">Publishing status</button>
+                    <pre id="publishing-status" style="white-space:pre-wrap"></pre>
+                </div>
+            </div>
+
+            <div class="panel">
+                <h2>Live Processing Logs</h2>
+                <pre id="live-logs" style="max-height: 300px; overflow: auto; white-space: pre-wrap; color: #b8f7ff; background: rgba(0,0,0,.35); padding: 15px;">Waiting for server events...</pre>
+            </div>
+
+        <!-- Video Preview Panel -->
+        <div id="preview-panel" class="panel" style="display: none;">
+            <h2>Video Preview</h2>
+
+            <div class="preview-section">
+                <div class="video-preview">
+                    <video id="video-player" controls></video>
+                </div>
+
+                <div class="metadata-display" id="metadata-display">
+                    <div class="status-message">Generating metadata...</div>
+                </div>
+            </div>
+
+            <div class="timing-card">
+                <div>
+                    <div class="metadata-label">Total Generation Time</div>
+                    <div class="metadata-value">Complete lifecycle from start to final output</div>
+                </div>
+                <div class="timing-value" id="total-generation-time">--:--:--</div>
+            </div>
+
+            <div class="button-group" style="margin-top: 20px;">
+                <button onclick="downloadVideo()">⬇ Download Video</button>
+                <button class="btn-primary" onclick="uploadCurrentVideo()">📤 Upload to YouTube</button>
+                <button onclick="shareVideo()">🔗 Share</button>
+            </div>
+        </div>
+
+        <!-- Recent Jobs -->
+        <div class="panel">
+            <h2>Recent Videos</h2>
+
+            <div class="jobs-list" id="jobs-list">
+                <div style="text-align: center; color: #666; padding: 30px;">
+                    Loading videos...
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <footer>
+        <p>Jazz Video Generator • YouTube Automation Engine v2.0 • Powered by Gemini AI</p>
+    </footer>
+
+    <script>
+        const API_BASE = '/api/jazz';
+        let currentJob = null;
+        let statusInterval = null;
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', function() {
+            loadJobs();
+            checkStatus();
+            loadLogs();
+            loadComponents();
+            setInterval(loadLogs, 2000);
+            setInterval(loadComponents, 10000);
+        });
+
+        async function startGeneration() {
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const videoCount = parseInt(document.getElementById('video-count').value);
+            const durationMinutes = parseInt(document.getElementById('duration-minutes').value);
+            const testMode = mode === 'test';
+
+            try {
+                const response = await fetch(`${API_BASE}/generate`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        video_count: videoCount,
+                        test_mode: testMode,
+                        duration_minutes: durationMinutes,
+                        waveform_enabled: document.getElementById('waveform-enabled').checked,
+                        waveform_filter_enabled: document.getElementById('waveform-filter-enabled').checked,
+                        watermark_enabled: document.getElementById('watermark-enabled').checked,
+                        subscribe_overlay_enabled: document.getElementById('subscribe-overlay-enabled').checked
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    currentJob = data.job;
+                    showProgress();
+                    startStatusPolling();
+                    document.getElementById('btn-start').disabled = true;
+                    document.getElementById('btn-cancel').disabled = false;
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                alert('Failed to start generation: ' + error.message);
+            }
+        }
+
+        async function checkStatus() {
+            try {
+                const response = await fetch(`${API_BASE}/status`);
+                const data = await response.json();
+
+                if (data.job && data.job.status === 'running') {
+                    currentJob = data.job;
+                    showProgress();
+                    startStatusPolling();
+                }
+            } catch (error) {
+                console.error('Status check failed:', error);
+            }
+        }
+
+        function startStatusPolling() {
+            if (statusInterval) clearInterval(statusInterval);
+
+            statusInterval = setInterval(async () => {
+                try {
+                    const response = await fetch(`${API_BASE}/status`);
+                    const data = await response.json();
+
+                    if (data.job) {
+                        currentJob = data.job;
+                        updateProgress(data.job);
+
+                        if (['completed', 'completed_with_fallback', 'failed', 'uploaded'].includes(data.job.status)) {
+                            clearInterval(statusInterval);
+                            document.getElementById('btn-start').disabled = false;
+                            document.getElementById('btn-cancel').disabled = true;
+
+                            if (['completed', 'completed_with_fallback', 'uploaded'].includes(data.job.status)) {
+                                showVideoPreview(data.job);
+                                loadJobs();
+                            }
+                        }
+                    }
+                } catch (error) {
+                    console.error('Polling failed:', error);
+                }
+            }, 2000);
+        }
+
+        function showProgress() {
+            document.getElementById('progress-section').style.display = 'block';
+            document.getElementById('preview-panel').style.display = 'none';
+        }
+
+        function updateProgress(job) {
+            const progressFill = document.getElementById('progress-fill');
+            const progressPercent = document.getElementById('progress-percent');
+            const progressMessage = document.getElementById('progress-message');
+            const statusMessage = document.getElementById('status-message');
+
+            const progress = job.progress || 0;
+            progressFill.style.width = progress + '%';
+            progressPercent.textContent = progress + '%';
+            progressMessage.textContent = job.message || 'Processing...';
+            statusMessage.innerHTML = `
+                <strong>${job.status.toUpperCase()}</strong><br>
+                Job ID: <code>${job.job_id}</code><br>
+                Progress: ${progress}%<br>
+                Total Generation Time: ${formatElapsed(job.total_elapsed_seconds)}
+            `;
+        }
+
+        function showVideoPreview(job) {
+            document.getElementById('progress-section').style.display = 'none';
+            document.getElementById('preview-panel').style.display = 'block';
+
+            // Load video
+            if (job.video_path) {
+                document.getElementById('video-player').src = `${API_BASE}/video/${job.job_id || job.id}/download`;
+            }
+
+            // Load metadata
+            const metadataDisplay = document.getElementById('metadata-display');
+            document.getElementById('total-generation-time').textContent = formatElapsed(
+                job.total_elapsed_seconds || job.metadata?.total_elapsed_seconds
+            );
+            if (job.metadata) {
+                metadataDisplay.innerHTML = `
+                    <div class="metadata-item">
+                        <div class="metadata-label">Title</div>
+                        <div class="metadata-value">${job.metadata.youtube_title || 'N/A'}</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Description</div>
+                        <div class="metadata-value">${job.metadata.youtube_description || 'N/A'}</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Tags</div>
+                        <div class="metadata-value">${(job.metadata.youtube_tags || []).join(', ')}</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Music Tracks</div>
+                        <div class="metadata-value">${(job.metadata.selected_music || []).map(m => m.split('/').pop()).join('<br>')}</div>
+                    </div>
+                    <div class="metadata-item">
+                        <div class="metadata-label">Waveform</div>
+                        <div class="metadata-value">${job.metadata.waveform_enabled ? 'Enabled - centered at 80% height' : 'Disabled'}</div>
+                    </div>
+                `;
+            }
+        }
+
+        async function loadJobs() {
+            try {
+                const response = await fetch(`${API_BASE}/jobs?limit=10`);
+                const data = await response.json();
+
+                const jobsList = document.getElementById('jobs-list');
+                if (data.jobs && data.jobs.length > 0) {
+                    jobsList.innerHTML = data.jobs.map(job => `
+                        <div class="job-item" onclick="viewJob('${job.id}')">
+                            <div class="job-header">
+                                <div class="job-id">${job.id}</div>
+                                <div class="job-status status-${job.status}">${job.status.toUpperCase()}</div>
+                            </div>
+                            <div class="job-info">
+                                <div class="info-item">
+                                    <div class="info-label">Duration</div>
+                                    <div class="info-value">${job.duration_minutes || 90} min</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Created</div>
+                                    <div class="info-value">${new Date(job.created_at).toLocaleString()}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Music Tracks</div>
+                                    <div class="info-value">${job.metadata?.selected_music?.length || 0}</div>
+                                </div>
+                                <div class="info-item">
+                                    <div class="info-label">Generation Time</div>
+                                    <div class="info-value">${formatElapsed(job.metadata?.total_elapsed_seconds)}</div>
+                                </div>
+                            </div>
+                            <div class="action-buttons">
+                                <button class="btn-small" onclick="event.stopPropagation(); previewJob('${job.id}')">👁 Preview</button>
+                                <button class="btn-small" onclick="event.stopPropagation(); downloadJob('${job.id}')">⬇ Download</button>
+                            </div>
+                        </div>
+                    `).join('');
+                } else {
+                    jobsList.innerHTML = '<div style="text-align: center; color: #666; padding: 30px;">No videos yet. Start generating!</div>';
+                }
+            } catch (error) {
+                console.error('Failed to load jobs:', error);
+            }
+        }
+
+        function formatElapsed(seconds) {
+            if (seconds === undefined || seconds === null || Number.isNaN(Number(seconds))) return '--:--:--';
+            const total = Math.max(0, Math.round(Number(seconds)));
+            const hours = String(Math.floor(total / 3600)).padStart(2, '0');
+            const minutes = String(Math.floor((total % 3600) / 60)).padStart(2, '0');
+            const secs = String(total % 60).padStart(2, '0');
+            return `${hours}:${minutes}:${secs}`;
+        }
+
+        async function refreshStatus() {
+            await checkStatus();
+            await loadJobs();
+        }
+
+        function cancelGeneration() {
+            if (confirm('Cancel current generation?')) {
+                fetch(`${API_BASE}/cancel`, { method: 'POST' });
+                document.getElementById('btn-start').disabled = false;
+                document.getElementById('btn-cancel').disabled = true;
+            }
+        }
+
+        function downloadVideo() {
+            if (currentJob && currentJob.video_path) {
+                const link = document.createElement('a');
+                link.href = currentJob.video_path;
+                link.download = `jazz_${currentJob.job_id}.mp4`;
+                link.click();
+            }
+        }
+
+        async function showPublishingQueue() {
+            try {
+                const response = await fetch(`${API_BASE}/youtube/queue`);
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message);
+                document.getElementById('publishing-status').textContent = (data.operation?.message || '') + '\n' + data.jobs.map(j =>
+                    `${j.job_id}: ${j.youtube_status}\n${j.scheduled_publish_time || ''} ${j.last_error || ''}`
+                ).join('\n');
+                if (data.operation?.status === 'uploading') setTimeout(showPublishingQueue, 2000);
+            } catch (error) { document.getElementById('publishing-status').textContent = error.message; }
+        }
+        async function publishPendingVideos() {
+            try {
+                const response = await fetch(`${API_BASE}/youtube/publish`, {method: 'POST'});
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.message);
+                document.getElementById('publishing-status').textContent = data.message;
+                setTimeout(showPublishingQueue, 500);
+            } catch (error) { document.getElementById('publishing-status').textContent = error.message; }
+        }
+
+        async function uploadCurrentVideo() {
+            if (!currentJob || !(currentJob.job_id || currentJob.id)) {
+                alert('Generate or select a video first.');
+                return;
+            }
+            const jobId = currentJob.job_id || currentJob.id;
+            try {
+                const response = await fetch(`${API_BASE}/video/${jobId}/upload`, { method: 'POST' });
+                const data = await response.json();
+                if (!response.ok || !['accepted', 'success'].includes(data.status)) throw new Error(data.message || 'Upload failed');
+                if (data.status === 'accepted') {
+                    showPublishingQueue();
+                    return;
+                }
+                alert(`Upload complete. YouTube video ID: ${data.video_id}`);
+                loadComponents();
+            } catch (error) {
+                alert(`YouTube upload failed: ${error.message}`);
+            }
+        }
+
+        async function loadLogs() {
+            try {
+                const response = await fetch(`${API_BASE}/logs?limit=100`);
+                const data = await response.json();
+                const logLines = (data.logs || []).map(log =>
+                    `${log.timestamp} ${log.level.padEnd(8)} ${log.message}`
+                );
+                const element = document.getElementById('live-logs');
+                element.textContent = logLines.join('\n') || 'Waiting for server events...';
+                element.scrollTop = element.scrollHeight;
+            } catch (error) {
+                document.getElementById('live-logs').textContent = `Log stream unavailable: ${error.message}`;
+            }
+        }
+
+        async function loadComponents() {
+            try {
+                const response = await fetch(`${API_BASE}/components`);
+                const data = await response.json();
+                document.getElementById('component-status').innerHTML = Object.entries(data.components || {}).map(([name, value]) => {
+                    const connected = value.connected === true || value.status === 'healthy';
+                    const marker = connected ? '✓' : '✗';
+                    const detail = value.channel_name ? `: ${value.channel_name}` : (value.message || '');
+                    return `<div class="info-item"><div class="info-label">${name.replaceAll('_', ' ')}</div><div class="info-value">${marker} ${detail}</div></div>`;
+                }).join('');
+            } catch (error) {
+                document.getElementById('component-status').textContent = `Component status unavailable: ${error.message}`;
+            }
+        }
+
+        function shareVideo() {
+            if (currentJob && currentJob.job_id) {
+                const shareText = `Check out this jazz video: ${currentJob.job_id}`;
+                if (navigator.share) {
+                    navigator.share({
+                        title: 'Jazz Video',
+                        text: shareText
+                    });
+                } else {
+                    alert('Share: ' + shareText);
+                }
+            }
+        }
+
+        function viewJob(jobId) {
+            // Load job detail
+            loadJobDetail(jobId);
+        }
+
+        async function previewJob(jobId) {
+            try {
+                const response = await fetch(`${API_BASE}/jobs/${jobId}`);
+                const data = await response.json();
+                if (data.job) {
+                    showVideoPreview(data.job);
+                }
+            } catch (error) {
+                alert('Failed to load job: ' + error.message);
+            }
+        }
+
+        async function downloadJob(jobId) {
+            window.location.href = `${API_BASE}/video/${jobId}/download`;
+        }
+
+        async function loadJobDetail(jobId) {
+            try {
+                const response = await fetch(`${API_BASE}/jobs/${jobId}`);
+                const data = await response.json();
+                if (data.job) {
+                    showVideoPreview(data.job);
+                }
+            } catch (error) {
+                alert('Failed to load job: ' + error.message);
+            }
+        }
+    </script>
+</body>
+</html>

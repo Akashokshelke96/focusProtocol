@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Health Check - Silent Dark Blues</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1a1a1a;
+            --secondary: #2d2d2d;
+            --accent: #dc3545;
+            --success: #28a745;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent), #ff6b7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container-main {
+            padding: 40px 20px;
+        }
+
+        .card {
+            background: var(--secondary);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .check-item {
+            padding: 20px;
+            border-left: 4px solid #ddd;
+            background: rgba(255, 255, 255, 0.02);
+            margin-bottom: 15px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+        }
+
+        .check-item.healthy {
+            border-left-color: #5ade5a;
+            background: rgba(90, 222, 90, 0.05);
+        }
+
+        .check-item.warning {
+            border-left-color: #ffc107;
+            background: rgba(255, 193, 7, 0.05);
+        }
+
+        .check-item.error {
+            border-left-color: #ff6b7a;
+            background: rgba(255, 107, 122, 0.05);
+        }
+
+        .check-icon {
+            font-size: 2rem;
+            min-width: 50px;
+            text-align: center;
+        }
+
+        .check-icon.healthy { color: #5ade5a; }
+        .check-icon.warning { color: #ffc107; }
+        .check-icon.error { color: #ff6b7a; }
+
+        .check-details h6 {
+            margin: 0 0 5px 0;
+            color: #e0e0e0;
+            text-transform: capitalize;
+        }
+
+        .check-details p {
+            margin: 0;
+            color: #999;
+            font-size: 0.9rem;
+        }
+
+        .status-badge {
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-healthy {
+            background: rgba(90, 222, 90, 0.2);
+            color: #5ade5a;
+        }
+
+        .status-warning {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+
+        .status-error {
+            background: rgba(255, 107, 122, 0.2);
+            color: #ff6b7a;
+        }
+
+        .overall-status {
+            text-align: center;
+            padding: 30px;
+        }
+
+        .overall-status-icon {
+            font-size: 4rem;
+            margin-bottom: 20px;
+        }
+
+        .btn-refresh {
+            background: linear-gradient(135deg, var(--accent), #ff6b7a);
+            border: none;
+            color: white;
+            font-weight: 600;
+        }
+
+        .btn-refresh:hover {
+            background: linear-gradient(135deg, #ff6b7a, var(--accent));
+            color: white;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(220, 53, 69, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--accent), #ff6b7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/"><i class="fas fa-music"></i> Silent Dark Blues</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/schedule">Schedule</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/health">Health Check</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-main">
+        <h1 class="header-title"><i class="fas fa-heartbeat"></i> System Health Check</h1>
+        <p style="color: #999; margin-bottom: 30px;">Monitor all dependent systems and APIs</p>
+
+        <div class="overall-status">
+            <div id="overallIcon" class="overall-status-icon">
+                <div class="loading"></div>
+            </div>
+            <h2 id="overallStatus" style="color: #999;">Checking...</h2>
+            <p id="overallMessage" style="color: #666;">Running comprehensive health check...</p>
+            <button class="btn btn-refresh mt-3" onclick="runHealthCheck()">
+                <i class="fas fa-sync"></i> Refresh Check
+            </button>
+        </div>
+
+        <div id="checksContainer"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', runHealthCheck);
+
+        async function runHealthCheck() {
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+
+                // Update overall status
+                const isHealthy = data.status === 'healthy';
+                const statusColor = isHealthy ? '#5ade5a' : '#ffc107';
+                const statusIcon = isHealthy ? 'fa-check-circle' : 'fa-exclamation-circle';
+                const statusText = isHealthy ? 'ALL SYSTEMS HEALTHY' : 'SYSTEMS DEGRADED';
+
+                document.getElementById('overallIcon').innerHTML = `<i class="fas ${statusIcon}" style="color: ${statusColor};"></i>`;
+                document.getElementById('overallStatus').textContent = statusText;
+                document.getElementById('overallStatus').style.color = statusColor;
+                document.getElementById('overallMessage').textContent = `${data.timestamp}`;
+
+                // Build checks HTML
+                let html = '<div class="row">';
+
+                for (const [key, check] of Object.entries(data.checks)) {
+                    const statusClass = check.status;
+                    const iconMap = {
+                        'healthy': 'fa-check-circle',
+                        'warning': 'fa-exclamation-triangle',
+                        'error': 'fa-times-circle'
+                    };
+                    const icon = iconMap[statusClass] || 'fa-circle';
+
+                    let details = `<strong>${check.message}</strong>`;
+
+                    if (check.credits !== undefined) {
+                        details += `<br>Credits available: ${check.credits}`;
+                    }
+                    if (check.count !== undefined) {
+                        details += `<br>Images: ${check.count}`;
+                    }
+                    if (check.episodes !== undefined) {
+                        details += `<br>Episodes: ${check.episodes}`;
+                    }
+                    if (check.version) {
+                        details += `<br><small>${check.version}</small>`;
+                    }
+
+                    html += `
+                        <div class="col-md-6">
+                            <div class="check-item ${statusClass}">
+                                <div class="check-icon ${statusClass}">
+                                    <i class="fas ${icon}"></i>
+                                </div>
+                                <div class="check-details flex-grow-1">
+                                    <h6>${key.replace(/_/g, ' ')}</h6>
+                                    <p>${details}</p>
+                                </div>
+                                <span class="status-badge status-${statusClass}">${statusClass}</span>
+                            </div>
+                        </div>
+                    `;
+                }
+
+                html += '</div>';
+                document.getElementById('checksContainer').innerHTML = html;
+
+            } catch (error) {
+                console.error('Health check failed:', error);
+                document.getElementById('checksContainer').innerHTML = `
+                    <div class="alert alert-danger">
+                        <i class="fas fa-times-circle"></i> Failed to check system health: ${error}
+                    </div>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>

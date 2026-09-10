@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Music Generation - Silent Dark Blues</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1a1a1a;
+            --secondary: #2d2d2d;
+            --accent: #dc3545;
+            --success: #28a745;
+            --warning: #ffc107;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+        }
+
+        .navbar {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent), #ff6b7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container-main {
+            padding: 40px 20px;
+        }
+
+        .card {
+            background: var(--secondary);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+        }
+
+        .card-header {
+            background: linear-gradient(90deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
+            border-bottom: 2px solid var(--accent);
+            padding: 20px;
+        }
+
+        .card-title {
+            color: var(--accent);
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #ff6b7a);
+            border: none;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #ff6b7a, var(--accent));
+            color: white;
+        }
+
+        .variation-card {
+            background: rgba(220, 53, 69, 0.05);
+            border: 1px solid rgba(220, 53, 69, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .variation-card:hover {
+            border-color: var(--accent);
+            box-shadow: 0 4px 15px rgba(220, 53, 69, 0.2);
+        }
+
+        .variation-title {
+            font-weight: 700;
+            color: #e0e0e0;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .status-badge {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.85rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .status-queued {
+            background: rgba(100, 150, 255, 0.2);
+            color: #64b5ff;
+        }
+
+        .status-processing {
+            background: rgba(255, 193, 7, 0.2);
+            color: #ffc107;
+        }
+
+        .status-completed {
+            background: rgba(40, 167, 69, 0.2);
+            color: #5ade5a;
+        }
+
+        .status-failed {
+            background: rgba(220, 53, 69, 0.2);
+            color: #ff6b7a;
+        }
+
+        .progress {
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 10px;
+            height: 25px;
+            border: 1px solid rgba(220, 53, 69, 0.2);
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            background: linear-gradient(90deg, var(--accent), #ff6b7a);
+            transition: width 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+            font-size: 0.85rem;
+        }
+
+        .stat-box {
+            background: linear-gradient(135deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
+            border: 1px solid rgba(220, 53, 69, 0.2);
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        .stat-number {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: var(--accent);
+        }
+
+        .stat-label {
+            color: #999;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+        }
+
+        .loading-spinner {
+            display: inline-block;
+            width: 30px;
+            height: 30px;
+            border: 3px solid rgba(220, 53, 69, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--accent), #ff6b7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .info-text {
+            color: #999;
+            font-size: 0.95rem;
+            line-height: 1.6;
+        }
+
+        .compilation-box {
+            background: rgba(40, 167, 69, 0.05);
+            border-left: 4px solid var(--success);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+
+        .compilation-box h6 {
+            color: var(--success);
+            font-weight: 700;
+            margin-bottom: 8px;
+        }
+
+        .compilation-box p {
+            margin: 0;
+            color: #b0b0b0;
+            font-size: 0.95rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/"><i class="fas fa-music"></i> Silent Dark Blues</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/music">Music Gen</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/schedule">Schedule</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/health">Health</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-main">
+        <h1 class="header-title"><i class="fas fa-music"></i> Dark Blues Music Generation</h1>
+        <p style="color: #999; margin-bottom: 30px;">Generate 5 variations of 20-minute dark blues tracks with Treblo API</p>
+
+        <!-- Status Overview -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="stat-box">
+                    <i class="fas fa-music" style="font-size: 2rem; color: var(--accent); margin-bottom: 10px;"></i>
+                    <div class="stat-label">Variations</div>
+                    <div class="stat-number" id="stat-total">5</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-box">
+                    <i class="fas fa-spinner" style="font-size: 2rem; color: #ffc107; margin-bottom: 10px;"></i>
+                    <div class="stat-label">Processing</div>
+                    <div class="stat-number" id="stat-processing">0</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-box">
+                    <i class="fas fa-check-circle" style="font-size: 2rem; color: #28a745; margin-bottom: 10px;"></i>
+                    <div class="stat-label">Completed</div>
+                    <div class="stat-number" id="stat-completed">0</div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="stat-box">
+                    <i class="fas fa-exclamation-circle" style="font-size: 2rem; color: #dc3545; margin-bottom: 10px;"></i>
+                    <div class="stat-label">Failed</div>
+                    <div class="stat-number" id="stat-failed">0</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- API Key Setup -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-key"></i> Treblo API Configuration</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i> <strong>Treblo API Key Required</strong><br>
+                    Add <code>TREBLO_API_KEY</code> to your <code>.env</code> file to enable music generation.
+                </div>
+                <div class="info-text">
+                    <p><strong>How to get your Treblo API key:</strong></p>
+                    <ol>
+                        <li>Visit <a href="https://treblo.com/developers" target="_blank" style="color: var(--accent);">https://treblo.com/developers</a></li>
+                        <li>Sign up or log in to your account</li>
+                        <li>Navigate to API Keys section</li>
+                        <li>Create or copy your API key</li>
+                        <li>Add to <code>.env</code>: <code>TREBLO_API_KEY=your_key_here</code></li>
+                    </ol>
+                </div>
+                <button class="btn btn-primary" onclick="checkApiKey()">
+                    <i class="fas fa-plug"></i> Check API Connection
+                </button>
+            </div>
+        </div>
+
+        <!-- Generation Controls -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-play"></i> Generation Controls</h5>
+            </div>
+            <div class="card-body">
+                <div class="info-text" style="margin-bottom: 20px;">
+                    <strong>What will be generated:</strong><br>
+                    • 5 variations of 20-minute dark blues tracks<br>
+                    • Slow 76–80 BPM, smoky, sophisticated atmosphere<br>
+                    • Warm tenor saxophone with subtle upright bass<br>
+                    • Occasional deep male baritone vocals<br>
+                    • Perfect for focus, work, and deep concentration
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn btn-primary btn-lg" onclick="startGeneration()" id="startBtn">
+                        <i class="fas fa-play-circle"></i> Start Generation (5 Variations)
+                    </button>
+                    <button class="btn btn-secondary btn-lg" onclick="refreshProgress()" id="refreshBtn">
+                        <i class="fas fa-sync"></i> Check Progress
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Variations Progress -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-tasks"></i> Variation Progress (Real-time)</h5>
+            </div>
+            <div class="card-body">
+                <div id="variationsContainer">
+                    <p class="text-muted">Click "Start Generation" to begin creating 5 variations...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Compilations -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-cube"></i> Output Compilations</h5>
+            </div>
+            <div class="card-body">
+                <div id="compilationsContainer">
+                    <p class="text-muted">Compilations will be created after all 5 variations are generated.</p>
+                </div>
+
+                <button class="btn btn-success" onclick="createCompilations()" id="createCompBtn" style="display: none; margin-top: 20px;">
+                    <i class="fas fa-cubes"></i> Create 2 Compilations (60 min each)
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        let autoRefreshInterval = null;
+
+        document.addEventListener('DOMContentLoaded', function() {
+            checkApiKey();
+        });
+
+        async function checkApiKey() {
+            const btn = event?.target;
+            if (btn) {
+                btn.disabled = true;
+                btn.innerHTML = '<div class="loading-spinner"></div> Checking...';
+            }
+
+            try {
+                const response = await fetch('/api/music/check-treblo');
+                const data = await response.json();
+
+                if (data.connected) {
+                    showAlert('✓ Successfully connected to Treblo API!', 'success');
+                } else {
+                    showAlert('✗ ' + data.message + ' - ' + (data.help || ''), 'danger');
+                }
+            } catch (error) {
+                showAlert('Error checking API: ' + error.message, 'danger');
+                console.error('API check failed:', error);
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-plug"></i> Check API Connection';
+                }
+            }
+        }
+
+        async function startGeneration() {
+            const btn = document.getElementById('startBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loading-spinner"></div> Starting...';
+
+            try {
+                const response = await fetch('/api/music/start-generation', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showAlert(`Started generating ${data.data.queued}/5 variations`, 'success');
+                    startAutoRefresh();
+                    btn.innerHTML = '<i class="fas fa-sync"></i> Refreshing...';
+                } else {
+                    showAlert('Error: ' + data.message, 'danger');
+                    btn.disabled = false;
+                    btn.innerHTML = '<i class="fas fa-play-circle"></i> Start Generation';
+                }
+            } catch (error) {
+                showAlert('Error starting generation: ' + error, 'danger');
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-play-circle"></i> Start Generation';
+            }
+        }
+
+        async function refreshProgress() {
+            try {
+                const response = await fetch('/api/music/progress');
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const progress = data.data;
+                    updateProgressUI(progress);
+
+                    // Show create button if all completed
+                    if (progress.stats.completed === 5) {
+                        document.getElementById('createCompBtn').style.display = 'block';
+                        stopAutoRefresh();
+                    }
+                }
+            } catch (error) {
+                console.error('Progress check failed:', error);
+            }
+        }
+
+        function updateProgressUI(progress) {
+            const stats = progress.stats;
+
+            // Update stats
+            document.getElementById('stat-processing').textContent = stats.processing;
+            document.getElementById('stat-completed').textContent = stats.completed;
+            document.getElementById('stat-failed').textContent = stats.failed;
+
+            // Update variations
+            let html = '';
+            for (const variation of progress.variations) {
+                const statusClass = `status-${variation.status}`;
+                const progressPercent = variation.progress || 0;
+
+                html += `
+                    <div class="variation-card">
+                        <div class="variation-title">
+                            <i class="fas fa-compact-disc"></i> Variation ${variation.variation}
+                            <span class="status-badge ${statusClass}">${variation.status}</span>
+                        </div>
+                        <p style="color: #999; margin-bottom: 10px;">${variation.title}</p>
+                        <div class="progress">
+                            <div class="progress-bar" style="width: ${progressPercent}%">
+                                ${progressPercent > 10 ? progressPercent + '%' : ''}
+                            </div>
+                        </div>
+                        <small style="color: #666; margin-top: 8px; display: block;">
+                            ID: ${variation.generation_id.substring(0, 20)}...
+                        </small>
+                    </div>
+                `;
+            }
+
+            document.getElementById('variationsContainer').innerHTML = html;
+        }
+
+        async function createCompilations() {
+            const btn = document.getElementById('createCompBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loading-spinner"></div> Creating...';
+
+            try {
+                const response = await fetch('/api/music/create-compilations', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'}
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    showAlert('Compilations created successfully!', 'success');
+                    displayCompilations(data.data.compilations);
+                } else {
+                    showAlert('Error: ' + data.message, 'danger');
+                }
+            } catch (error) {
+                showAlert('Error creating compilations: ' + error, 'danger');
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-cubes"></i> Create Compilations';
+            }
+        }
+
+        function displayCompilations(compilations) {
+            let html = '';
+            for (const comp of compilations) {
+                html += `
+                    <div class="compilation-box">
+                        <h6><i class="fas fa-cube"></i> ${comp.title}</h6>
+                        <p><strong>Episode:</strong> ${comp.episode} | <strong>Duration:</strong> ${comp.total_duration_minutes} minutes</p>
+                        <p><strong>Variations:</strong> ${comp.variations.join(', ')}</p>
+                    </div>
+                `;
+            }
+            document.getElementById('compilationsContainer').innerHTML = html;
+        }
+
+        function startAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+            autoRefreshInterval = setInterval(refreshProgress, 10000); // Every 10 seconds
+            refreshProgress(); // Immediate refresh
+        }
+
+        function stopAutoRefresh() {
+            if (autoRefreshInterval) clearInterval(autoRefreshInterval);
+        }
+
+        function showAlert(message, type) {
+            const alertHtml = `
+                <div class="alert alert-${type} alert-dismissible fade show" role="alert" style="margin-bottom: 20px;">
+                    ${message}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+            `;
+            document.querySelector('.container-main').insertAdjacentHTML('afterbegin', alertHtml);
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Silent Dark Blues - Episode Generator</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 40px;
+            border-bottom: 2px solid #0f3460;
+            padding-bottom: 20px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            color: #00d4ff;
+            text-shadow: 0 0 20px rgba(0, 212, 255, 0.5);
+            margin-bottom: 10px;
+        }
+
+        .header p {
+            color: #888;
+            font-size: 0.95em;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(15, 52, 96, 0.6);
+            border: 1px solid #0f3460;
+            border-radius: 8px;
+            padding: 30px;
+            backdrop-filter: blur(10px);
+        }
+
+        .card h2 {
+            color: #00d4ff;
+            margin-bottom: 20px;
+            font-size: 1.3em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .card h2::before {
+            content: '♪';
+            font-size: 1.2em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: #00d4ff;
+            font-size: 0.95em;
+            font-weight: 500;
+        }
+
+        input, textarea, select {
+            width: 100%;
+            padding: 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            color: #e0e0e0;
+            font-family: inherit;
+            font-size: 0.95em;
+        }
+
+        textarea {
+            resize: vertical;
+            min-height: 200px;
+            font-family: 'Courier New', monospace;
+        }
+
+        input:focus, textarea:focus, select:focus {
+            outline: none;
+            border-color: #00d4ff;
+            background: rgba(0, 212, 255, 0.05);
+            box-shadow: 0 0 10px rgba(0, 212, 255, 0.2);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        button {
+            flex: 1;
+            padding: 12px 24px;
+            background: linear-gradient(135deg, #00d4ff 0%, #0098cc 100%);
+            color: #000;
+            border: none;
+            border-radius: 4px;
+            font-weight: 600;
+            cursor: pointer;
+            font-size: 0.95em;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 20px rgba(0, 212, 255, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button.secondary {
+            background: linear-gradient(135deg, #444 0%, #222 100%);
+            color: #00d4ff;
+        }
+
+        button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .status-box {
+            background: rgba(0, 212, 255, 0.1);
+            border-left: 3px solid #00d4ff;
+            padding: 15px;
+            border-radius: 4px;
+            margin-top: 15px;
+            display: none;
+        }
+
+        .status-box.show {
+            display: block;
+        }
+
+        .status-box.success {
+            background: rgba(0, 200, 100, 0.1);
+            border-left-color: #00c864;
+        }
+
+        .status-box.error {
+            background: rgba(255, 0, 100, 0.1);
+            border-left-color: #ff0064;
+        }
+
+        .status-text {
+            font-size: 0.9em;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 4px;
+            background: rgba(0, 212, 255, 0.1);
+            border-radius: 2px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00d4ff 0%, #0098cc 100%);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .jobs-section {
+            grid-column: 1 / -1;
+        }
+
+        .jobs-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 15px;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+
+        .job-card {
+            background: rgba(0, 212, 255, 0.05);
+            border: 1px solid #0f3460;
+            border-radius: 4px;
+            padding: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .job-card:hover {
+            background: rgba(0, 212, 255, 0.1);
+            border-color: #00d4ff;
+        }
+
+        .job-id {
+            font-size: 0.85em;
+            color: #888;
+            font-family: monospace;
+        }
+
+        .job-status {
+            margin-top: 8px;
+            font-size: 0.9em;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 3px;
+            font-size: 0.8em;
+            font-weight: 600;
+        }
+
+        .badge.completed {
+            background: rgba(0, 200, 100, 0.3);
+            color: #00c864;
+        }
+
+        .badge.failed {
+            background: rgba(255, 0, 100, 0.3);
+            color: #ff0064;
+        }
+
+        .badge.processing {
+            background: rgba(0, 212, 255, 0.3);
+            color: #00d4ff;
+        }
+
+        .spinner {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(0, 212, 255, 0.3);
+            border-top-color: #00d4ff;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            margin-right: 8px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🎵 Silent Dark Blues</h1>
+            <p>Generate atmospheric dark blues visualizer videos</p>
+        </div>
+
+        <div class="grid">
+            <!-- Music Configuration Card -->
+            <div class="card">
+                <h2>Music Configuration</h2>
+
+                <div class="form-group">
+                    <label>Music Prompt (ACE-Step)</label>
+                    <textarea id="musicPrompt" placeholder="Enter music generation prompt..."></textarea>
+                    <small style="color: #888; margin-top: 8px; display: block;">
+                        Leave empty to use default dark blues prompt
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label>Duration (minutes)</label>
+                    <input type="number" id="duration" value="5" min="1" max="30">
+                </div>
+
+                <div class="button-group">
+                    <button onclick="testAceMusic()">
+                        <span class="spinner" id="testSpinner" style="display:none;"></span>
+                        Test ACE-Step API
+                    </button>
+                    <button class="secondary" onclick="loadDefaultPrompt()">Load Default Prompt</button>
+                </div>
+
+                <div id="aceStatus" class="status-box">
+                    <div class="status-text" id="aceStatusText"></div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="aceProgress"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Video Generation Card -->
+            <div class="card">
+                <h2>Video Generation</h2>
+
+                <div class="form-group">
+                    <label>Image Source</label>
+                    <select id="imageSource">
+                        <option value="cillian">Cillian Murphy (Peaky Blinders)</option>
+                        <option value="johnwick">John Wick</option>
+                        <option value="both">Mix Both</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Number of Hero Shots</label>
+                    <input type="number" id="heroCount" value="6" min="4" max="12">
+                </div>
+
+                <div class="form-group">
+                    <label>Video Quality</label>
+                    <select id="quality">
+                        <option value="1080">1920x1080 (Full HD)</option>
+                        <option value="720">1280x720 (HD)</option>
+                    </select>
+                </div>
+
+                <button onclick="generateVideo()" style="width: 100%; margin-top: 20px;">
+                    <span class="spinner" id="genSpinner" style="display:none;"></span>
+                    Generate Episode
+                </button>
+
+                <div id="genStatus" class="status-box">
+                    <div class="status-text" id="genStatusText"></div>
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="genProgress"></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recent Jobs Card -->
+            <div class="card jobs-section">
+                <h2>Recent Episodes</h2>
+                <div class="jobs-grid" id="jobsList">
+                    <p style="color: #888;">Loading...</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const DEFAULT_MUSIC_PROMPT = `Create an ORIGINAL dark, sophisticated, hypnotic blues instrumental for deep focus work.
+CORE VIBE: Dark noir blues / blues-rock. Masculine, mature, intelligent, mysterious and controlled.
+RHYTHM: Slow, steady, deliberate. Around 75–82 BPM with subtle double-time pulse.
+DRUMS: Minimal live-feeling drums. Deep soft kick, dry controlled snare, subtle hi-hat.
+BASS: Deep, warm electric bass with analog saturation. Repeating blues-based pattern.
+GUITAR: Dark vintage electric guitar with warm tube-amp overdrive, smooth saturation.
+HARMONY: Dark minor-blues atmosphere with blues-scale vocabulary.
+PRODUCTION: Warm analog character, dark tonal balance, rich low-mids, smooth highs, subtle tape saturation.
+NO: Vocals, EDM drops, aggressive rock, flashy solos, dramatic orchestration.
+PSYCHOLOGICAL TARGET: "I'll just work for a while..." and suddenly 2 hours have passed.`;
+
+        function loadDefaultPrompt() {
+            document.getElementById('musicPrompt').value = DEFAULT_MUSIC_PROMPT;
+        }
+
+        function updateStatus(elementId, message, type = 'info') {
+            const box = document.getElementById(elementId);
+            const text = document.getElementById(elementId.replace('Status', 'StatusText'));
+            box.className = `status-box show ${type}`;
+            text.textContent = message;
+        }
+
+        function setProgress(elementId, percent) {
+            const fill = document.getElementById(elementId.replace('Status', 'Progress'));
+            fill.style.width = percent + '%';
+        }
+
+        async function testAceMusic() {
+            const btn = event.target;
+            const spinner = document.getElementById('testSpinner');
+            const prompt = document.getElementById('musicPrompt').value || DEFAULT_MUSIC_PROMPT;
+
+            btn.disabled = true;
+            spinner.style.display = 'inline-block';
+            updateStatus('aceStatus', 'Testing ACE-Step API connection...', 'info');
+            setProgress('aceStatus', 0);
+
+            try {
+                const response = await fetch('/api/test-acemusic', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    setProgress('aceStatus', 100);
+                    updateStatus('aceStatus', `✓ ACE-Step API Working! Generated ${data.candidates} music candidates.`, 'success');
+                } else {
+                    updateStatus('aceStatus', `✗ API Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                updateStatus('aceStatus', `✗ Connection Error: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        }
+
+        async function generateVideo() {
+            const btn = event.target;
+            const spinner = document.getElementById('genSpinner');
+            const prompt = document.getElementById('musicPrompt').value || DEFAULT_MUSIC_PROMPT;
+            const duration = parseInt(document.getElementById('duration').value);
+            const imageSource = document.getElementById('imageSource').value;
+            const heroCount = parseInt(document.getElementById('heroCount').value);
+
+            btn.disabled = true;
+            spinner.style.display = 'inline-block';
+            updateStatus('genStatus', 'Generating episode...', 'info');
+            setProgress('genStatus', 10);
+
+            try {
+                setProgress('genStatus', 30);
+                updateStatus('genStatus', 'Fetching images from Pinterest...', 'info');
+
+                setProgress('genStatus', 60);
+                updateStatus('genStatus', 'Generating music with ACE-Step...', 'info');
+
+                const response = await fetch('/api/generate-video', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        music_prompt: prompt,
+                        duration_minutes: duration,
+                        image_source: imageSource,
+                        hero_count: heroCount
+                    })
+                });
+
+                const data = await response.json();
+
+                if (response.ok) {
+                    setProgress('genStatus', 100);
+                    updateStatus('genStatus', '✓ Episode generated successfully! Refresh to see in Recent Episodes.', 'success');
+                    loadJobs();
+                } else {
+                    updateStatus('genStatus', `✗ Generation Error: ${data.error}`, 'error');
+                }
+            } catch (error) {
+                updateStatus('genStatus', `✗ Error: ${error.message}`, 'error');
+            } finally {
+                btn.disabled = false;
+                spinner.style.display = 'none';
+            }
+        }
+
+        async function loadJobs() {
+            try {
+                const response = await fetch('/api/jobs');
+                const data = await response.json();
+                const jobsList = document.getElementById('jobsList');
+
+                if (data.jobs.length === 0) {
+                    jobsList.innerHTML = '<p style="color: #888; grid-column: 1/-1;">No episodes generated yet</p>';
+                    return;
+                }
+
+                jobsList.innerHTML = data.jobs.map(job => `
+                    <div class="job-card" onclick="downloadVideo('${job.id}')">
+                        <div class="job-id">${job.id}</div>
+                        <div style="margin-top: 8px; font-size: 0.9em;">${job.topic}</div>
+                        <div class="job-status">
+                            <span class="badge ${job.status}">${job.status.toUpperCase()}</span>
+                        </div>
+                    </div>
+                `).join('');
+            } catch (error) {
+                console.error('Failed to load jobs:', error);
+            }
+        }
+
+        function downloadVideo(jobId) {
+            window.location.href = `/api/video/${jobId}`;
+        }
+
+        // Load default prompt on page load
+        window.addEventListener('load', () => {
+            loadDefaultPrompt();
+            loadJobs();
+            setInterval(loadJobs, 5000);
+        });
+    </script>
+</body>
+</html>

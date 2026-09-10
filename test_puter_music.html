@@ -1,0 +1,41 @@
+
+    <html>
+    <head>
+        <script src="https://js.puter.com/v2/"></script>
+    </head>
+    <body>
+        <h1>Testing Puter Music Generation</h1>
+        <div id="status">Loading...</div>
+        
+        <script>
+            async function generateBluesMusic() {
+                try {
+                    const prompt = `${master_prompt}`;
+                    
+                    // Check available models
+                    const models = await puter.ai.listModels();
+                    console.log('Available models:', models);
+                    
+                    // Try text-to-audio/music generation
+                    const result = await puter.ai.chat({
+                        model: 'auto',
+                        messages: [{
+                            role: 'user',
+                            content: `Generate music with this specification: ${prompt}`
+                        }]
+                    });
+                    
+                    console.log('Result:', result);
+                    document.getElementById('status').innerHTML = 'Music generated: ' + result;
+                    
+                } catch (error) {
+                    console.error('Error:', error);
+                    document.getElementById('status').innerHTML = 'Error: ' + error.message;
+                }
+            }
+            
+            generateBluesMusic();
+        </script>
+    </body>
+    </html>
+    

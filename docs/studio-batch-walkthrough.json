@@ -1,0 +1,25 @@
+{
+  "created_at": "2026-09-10T11:52:24.863871+00:00",
+  "id": "6fdbd2381bf14814891b90700d522f27",
+  "jobs": [
+    {
+      "attempts": 0,
+      "channel_id": "focus-protocol",
+      "job_id": "20260908_015040_video_001",
+      "status": "queued"
+    },
+    {
+      "attempts": 0,
+      "channel_id": "focus-protocol",
+      "job_id": "20260908_035801_video_001",
+      "status": "queued"
+    },
+    {
+      "attempts": 0,
+      "channel_id": "focus-protocol",
+      "job_id": "20260909_232202_video_001",
+      "status": "queued"
+    }
+  ],
+  "status": "queued"
+}

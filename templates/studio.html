@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Long-form Studio</title><link rel="stylesheet" href="/static/studio.css"></head>
+<body>
+<aside class="sidebar">
+  <a class="brand" href="#overview"><span class="brand-mark">◧</span><span>LONG-FORM<small>STUDIO / LOCAL</small></span></a>
+  <label class="channel-label" for="channel">WORKSPACE</label><select id="channel" aria-label="Active channel"><option value="all">All channels</option></select>
+  <nav id="nav" aria-label="Main navigation"></nav>
+  <div class="sidebar-bottom"><span class="dot"></span> Local workspace <small>YOUR MEDIA. YOUR MACHINE.</small><a href="/legacy">Classic generator ↗</a></div>
+</aside>
+<div class="app"><header><div class="breadcrumb">Workspace <span>/</span> <b id="page-label">Overview</b></div><div class="header-actions"><span id="connection">Connecting…</span><button id="pause" class="quiet">Pause production</button><button class="primary" id="new-content">＋ Create content</button></div></header>
+<main id="main" tabindex="-1"><div class="empty">Loading your studio…</div></main>
+<footer>LONG-FORM STUDIO <span id="updated"></span></footer></div>
+<dialog id="editor"><div id="editor-body"></div></dialog>
+<div id="toast" role="status" aria-live="polite"></div>
+<script src="/static/studio.js"></script>
+</body></html>

@@ -1,0 +1,893 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Puter AI Chat - Video Thumbnail Generator</title>
+    <script src="https://js.puter.com/v2/"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            color: #e0e0e0;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .header {
+            background: rgba(0, 0, 0, 0.3);
+            padding: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.3);
+        }
+
+        .header h1 {
+            font-size: 24px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .header p {
+            font-size: 13px;
+            color: #aaa;
+            margin-top: 5px;
+        }
+
+        .container {
+            display: flex;
+            flex: 1;
+            gap: 20px;
+            padding: 20px;
+            max-width: 1600px;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .chat-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            overflow: hidden;
+        }
+
+        .chat-history {
+            flex: 1;
+            overflow-y: auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        .message {
+            display: flex;
+            gap: 12px;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .message.user {
+            justify-content: flex-end;
+        }
+
+        .message-bubble {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 12px;
+            word-wrap: break-word;
+            line-height: 1.4;
+        }
+
+        .user .message-bubble {
+            background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+            color: white;
+            border-bottom-right-radius: 4px;
+        }
+
+        .assistant .message-bubble {
+            background: rgba(255, 255, 255, 0.1);
+            color: #e0e0e0;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-bottom-left-radius: 4px;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 600;
+            font-size: 14px;
+            flex-shrink: 0;
+        }
+
+        .user .message-avatar {
+            background: #0066cc;
+            order: 2;
+            color: white;
+        }
+
+        .assistant .message-avatar {
+            background: rgba(100, 200, 255, 0.3);
+            color: #64c8ff;
+        }
+
+        .loading-indicator {
+            display: flex;
+            gap: 4px;
+            padding: 12px 16px;
+        }
+
+        .dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #64c8ff;
+            animation: pulse 1.4s infinite;
+        }
+
+        .dot:nth-child(2) {
+            animation-delay: 0.2s;
+        }
+
+        .dot:nth-child(3) {
+            animation-delay: 0.4s;
+        }
+
+        @keyframes pulse {
+            0%, 60%, 100% {
+                opacity: 0.3;
+            }
+            30% {
+                opacity: 1;
+            }
+        }
+
+        .input-section {
+            padding: 16px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        input[type="text"] {
+            flex: 1;
+            padding: 12px 16px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #e0e0e0;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        input[type="text"]:focus {
+            outline: none;
+            border-color: #0066cc;
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        input[type="text"]::placeholder {
+            color: #888;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            background: linear-gradient(135deg, #0066cc 0%, #0052a3 100%);
+            color: white;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 102, 204, 0.4);
+        }
+
+        button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .gallery-section {
+            width: 400px;
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        .gallery-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .gallery-panel h2 {
+            font-size: 16px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+
+        .image-gallery {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .gallery-item {
+            aspect-ratio: 16/9;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            cursor: pointer;
+            transition: all 0.2s;
+            position: relative;
+        }
+
+        .gallery-item:hover {
+            transform: scale(1.05);
+            border-color: rgba(255, 255, 255, 0.3);
+        }
+
+        .gallery-item img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+
+        .gallery-item .loading {
+            position: absolute;
+            inset: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: rgba(0, 0, 0, 0.5);
+            color: #64c8ff;
+            font-size: 12px;
+        }
+
+        .controls-panel {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 16px;
+        }
+
+        .controls-panel h3 {
+            font-size: 14px;
+            margin-bottom: 12px;
+            font-weight: 600;
+            color: #64c8ff;
+        }
+
+        .control-group {
+            margin-bottom: 12px;
+        }
+
+        .control-group label {
+            display: block;
+            font-size: 12px;
+            margin-bottom: 6px;
+            color: #aaa;
+        }
+
+        select {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #e0e0e0;
+            font-size: 12px;
+            cursor: pointer;
+        }
+
+        .prompt-template {
+            background: rgba(100, 200, 255, 0.1);
+            border: 1px solid rgba(100, 200, 255, 0.2);
+            border-radius: 8px;
+            padding: 12px;
+            margin-top: 12px;
+            font-size: 12px;
+            line-height: 1.5;
+            max-height: 200px;
+            overflow-y: auto;
+            color: #64c8ff;
+        }
+
+        .image-prompt {
+            width: 100%;
+            min-height: 96px;
+            padding: 10px 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.05);
+            color: #e0e0e0;
+            font: inherit;
+            font-size: 12px;
+            resize: vertical;
+        }
+
+        .image-prompt:focus {
+            outline: none;
+            border-color: #64c8ff;
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .quick-btn {
+            padding: 8px 12px;
+            font-size: 12px;
+            background: rgba(100, 200, 255, 0.1);
+            border: 1px solid rgba(100, 200, 255, 0.3);
+            color: #64c8ff;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .quick-btn:hover {
+            background: rgba(100, 200, 255, 0.2);
+            border-color: rgba(100, 200, 255, 0.5);
+        }
+
+        .status-bar {
+            padding: 8px 16px;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            font-size: 12px;
+            color: #aaa;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4ade80;
+            display: inline-block;
+            margin-right: 6px;
+        }
+
+        .status-indicator.loading {
+            background: #fbbf24;
+            animation: pulse 1s infinite;
+        }
+
+        @media (max-width: 1200px) {
+            .container {
+                flex-direction: column;
+            }
+
+            .gallery-section {
+                width: 100%;
+            }
+
+            .image-gallery {
+                grid-template-columns: repeat(4, 1fr);
+            }
+        }
+
+        @media (max-width: 768px) {
+            .image-gallery {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .message-bubble {
+                max-width: 85%;
+            }
+        }
+
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 4px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 3px solid #0066cc;
+            padding: 10px 12px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            margin: 8px 0;
+        }
+
+        .error-message {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #fca5a5;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 8px 0;
+            font-size: 13px;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🎨 AI Chat & Thumbnail Generator</h1>
+        <p>Powered by Puter AI - Generate professional YouTube thumbnails and chat with AI</p>
+    </div>
+
+    <div class="container">
+        <div class="chat-section">
+            <div class="chat-history" id="chatHistory"></div>
+            <div class="input-section">
+                <div class="input-group">
+                    <input
+                        type="text"
+                        id="messageInput"
+                        placeholder="Ask me anything... or type 'generate thumbnail' to create images"
+                        autocomplete="off"
+                    >
+                    <button id="sendBtn" onclick="sendMessage()">Send</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="gallery-section">
+            <div class="controls-panel">
+                <h3>🎬 Image Generation</h3>
+
+                <div class="control-group">
+                    <label>Model</label>
+                    <select id="modelSelect">
+                        <option value="auto">Auto (Best Available)</option>
+                        <option value="gpt-image-1-mini">GPT Image 1 Mini</option>
+                        <option value="gpt-image-2">GPT Image 2</option>
+                        <option value="grok-imagine-image">Grok Imagine Image</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>Quality</label>
+                    <select id="qualitySelect">
+                        <option value="high">High (4K)</option>
+                        <option value="standard">Standard</option>
+                    </select>
+                </div>
+
+                <div class="control-group">
+                    <label>
+                        <input type="checkbox" id="testModeSelect">
+                        Puter test mode (sample image, no credits)
+                    </label>
+                    <button class="quick-btn" id="signInBtn" type="button">Sign In to Puter</button>
+                </div>
+
+                <div class="prompt-template">
+                    <strong>Master Prompt (Auto-used):</strong><br>
+                    Creates ultra-realistic 4K cinematic thumbnails of a legendary blues guitarist with detailed lighting, atmosphere, and professional composition. Optimized for YouTube 16:9 format.
+                </div>
+
+                <div class="control-group">
+                    <label for="imagePrompt">Independent Image Prompt</label>
+                    <textarea id="imagePrompt" class="image-prompt" placeholder="Describe the image you want to create..."></textarea>
+                    <button class="quick-btn" id="generatePromptBtn" type="button">Generate Image From Prompt</button>
+                </div>
+
+                <div class="quick-actions">
+                    <button class="quick-btn" onclick="generateWithPrompt('blues-guitarist')">
+                        Generate Blues Guitarist
+                    </button>
+                    <button class="quick-btn" onclick="generateWithPrompt('jazz-club')">
+                        Generate Jazz Club Scene
+                    </button>
+                    <button class="quick-btn" onclick="clearGallery()">
+                        Clear Gallery
+                    </button>
+                </div>
+            </div>
+
+            <div class="gallery-panel">
+                <h2>📸 Generated Thumbnails</h2>
+                <div class="image-gallery" id="imageGallery"></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <span>
+            <span class="status-indicator" id="statusIndicator"></span>
+            <span id="statusText">Ready</span>
+        </span>
+        <span id="modelInfo">Model: Auto</span>
+    </div>
+
+    <script>
+        let conversationHistory = [];
+        let isLoading = false;
+        let generatedImages = [];
+
+        // Master prompt for image generation
+        const MASTER_IMAGE_PROMPT = `Create an ultra-realistic, cinematic 4K photograph of a legendary-looking elderly Black blues guitarist performing alone.
+
+He has a distinctive full white beard, dark skin, vintage black fedora, dark aviator sunglasses, and a cigar resting naturally between his lips with subtle smoke drifting through the air.
+
+He is playing a beautiful premium vintage hollow-body electric guitar with a dark glossy sunburst finish, intricate cream binding, detailed wood grain, polished gold hardware and realistic strings. His hands should be highly detailed and naturally positioned while playing the guitar.
+
+WARDROBE:
+Elegant white dress shirt, dark textured waistcoat, subtle vintage bow tie, classic blues musician aesthetic. Sophisticated, masculine, timeless.
+
+LIGHTING:
+Moody cinematic studio lighting, strong soft key light from the side, subtle rim lighting around the beard and shoulders, deep shadows, realistic highlights on the guitar, atmospheric smoky background.
+
+ATMOSPHERE:
+Dark Chicago blues / smoky jazz club / late-night blues atmosphere. Mysterious, sophisticated, soulful, powerful and nostalgic. Subtle gray-black textured background with natural cigar smoke creating depth.
+
+COMPOSITION:
+Landscape 16:9 composition designed for a YouTube music video thumbnail.
+Medium close-up / waist-up framing.
+Musician positioned slightly toward the right side of the frame.
+Guitar prominently visible across the lower portion.
+Leave some clean negative space on the left side for optional text placement later, but DO NOT add any text.
+
+VISUAL QUALITY:
+Photorealistic, extremely detailed skin and beard texture, realistic hands and fingers, authentic guitar construction, natural fabric texture, cinematic depth of field, professional music photography, high dynamic range, sharp subject, subtle film grain, premium editorial photography, dramatic contrast, realistic smoke.
+
+IMPORTANT:
+NO text.
+NO letters.
+NO logos.
+NO watermark.
+NO captions.
+NO YouTube interface.
+NO borders.
+NO graphic overlays.
+NO artificial-looking CGI.
+NO distorted hands or fingers.
+
+Ultra-realistic photography, cinematic composition, 4K detail, professional blues album artwork aesthetic, timeless and visually striking.`;
+
+        // Initialize
+        document.getElementById('sendBtn').addEventListener('click', sendMessage);
+        document.getElementById('generatePromptBtn').addEventListener('click', () => {
+            const prompt = document.getElementById('imagePrompt').value.trim();
+            if (!prompt) {
+                addMessage('Please enter an image prompt first.', false);
+                return;
+            }
+            addGalleryItem(prompt);
+        });
+        document.getElementById('signInBtn').addEventListener('click', async () => {
+            try {
+                await puter.auth.signIn();
+                const user = await puter.auth.getUser();
+                updateStatus(`Signed in - ${user?.name || 'Puter user'}`);
+            } catch (error) {
+                updateStatus('Puter sign-in failed');
+                addMessage(`Puter sign-in failed: ${error.message || 'Please try again.'}`, false);
+            }
+        });
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter' && !isLoading) sendMessage();
+        });
+
+        function updateStatus(text, isLoading = false) {
+            document.getElementById('statusText').textContent = text;
+            document.getElementById('statusIndicator').className = 'status-indicator' + (isLoading ? ' loading' : '');
+        }
+
+        function addMessage(content, isUser = false) {
+            const chatHistory = document.getElementById('chatHistory');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isUser ? 'user' : 'assistant'}`;
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = isUser ? 'YOU' : 'AI';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble';
+
+            // Parse content for formatting
+            if (typeof content === 'string') {
+                // Handle code blocks
+                const parts = content.split(/```([\s\S]*?)```/);
+                parts.forEach((part, idx) => {
+                    if (idx % 2 === 1) {
+                        const codeBlock = document.createElement('div');
+                        codeBlock.className = 'code-block';
+                        codeBlock.textContent = part.trim();
+                        bubble.appendChild(codeBlock);
+                    } else if (part) {
+                        const p = document.createElement('p');
+                        p.textContent = part;
+                        bubble.appendChild(p);
+                    }
+                });
+            } else {
+                bubble.appendChild(content);
+            }
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(bubble);
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function addLoadingIndicator() {
+            const chatHistory = document.getElementById('chatHistory');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message assistant';
+            messageDiv.id = 'loadingIndicator';
+
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = 'AI';
+
+            const bubble = document.createElement('div');
+            bubble.className = 'message-bubble loading-indicator';
+
+            for (let i = 0; i < 3; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'dot';
+                bubble.appendChild(dot);
+            }
+
+            messageDiv.appendChild(avatar);
+            messageDiv.appendChild(bubble);
+            chatHistory.appendChild(messageDiv);
+            chatHistory.scrollTop = chatHistory.scrollHeight;
+        }
+
+        function removeLoadingIndicator() {
+            const indicator = document.getElementById('loadingIndicator');
+            if (indicator) indicator.remove();
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message || isLoading) return;
+
+            isLoading = true;
+            input.disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+
+            // Add user message
+            addMessage(message, true);
+            input.value = '';
+
+            // Add loading indicator
+            addLoadingIndicator();
+            updateStatus('AI is thinking...', true);
+
+            try {
+                // Check if user wants to generate images
+                if (message.toLowerCase().includes('generate') && message.toLowerCase().includes('thumbnail')) {
+                    removeLoadingIndicator();
+                    await generateImages(message);
+                } else {
+                    // Regular chat
+                    conversationHistory.push({
+                        role: 'user',
+                        content: message
+                    });
+
+                    const response = await puter.ai.chat({
+                        messages: conversationHistory,
+                        model: document.getElementById('modelSelect').value === 'auto' ? undefined : 'gpt-4',
+                        system: 'You are a helpful AI assistant specializing in video production, YouTube thumbnails, and content creation. Provide clear, concise, and creative advice.'
+                    });
+
+                    removeLoadingIndicator();
+
+                    const assistantMessage = response.message.content;
+                    conversationHistory.push({
+                        role: 'assistant',
+                        content: assistantMessage
+                    });
+
+                    addMessage(assistantMessage, false);
+                    updateStatus('Ready');
+                }
+            } catch (error) {
+                removeLoadingIndicator();
+                const errorMsg = document.createElement('div');
+                errorMsg.className = 'error-message';
+                errorMsg.innerHTML = `<strong>Error:</strong> ${error.message || 'Failed to process request'}`;
+                document.getElementById('chatHistory').appendChild(errorMsg);
+                updateStatus('Error occurred', false);
+            }
+
+            isLoading = false;
+            input.disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            input.focus();
+        }
+
+        async function generateImages(userMessage) {
+            const numImages = userMessage.match(/\d+/) ? parseInt(userMessage.match(/\d+/)[0]) : 4;
+
+            for (let i = 0; i < numImages; i++) {
+                addGalleryItem(MASTER_IMAGE_PROMPT);
+            }
+
+            addMessage(`🎨 Generating ${numImages} professional YouTube thumbnails using the master prompt...`, false);
+        }
+
+        function addGalleryItem(prompt) {
+            const gallery = document.getElementById('imageGallery');
+            const item = document.createElement('div');
+            item.className = 'gallery-item';
+            item.id = `gen-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+
+            const loader = document.createElement('div');
+            loader.className = 'loading';
+            loader.textContent = 'Generating...';
+            item.appendChild(loader);
+            gallery.appendChild(item);
+            generateSingleImage(item.id, prompt);
+        }
+
+        async function generateSingleImage(elementId, prompt) {
+            try {
+                updateStatus(`Generating image (${generatedImages.length + 1})...`, true);
+
+                const selectedModel = document.getElementById('modelSelect').value;
+                const options = {
+                    model: 'gpt-image-1-mini',
+                    quality: document.getElementById('qualitySelect').value === 'high' ? 'high' : 'low',
+                    ratio: { w: 16, h: 9 }
+                };
+                if (selectedModel !== 'auto') {
+                    options.model = selectedModel;
+                }
+
+                const testMode = document.getElementById('testModeSelect').checked;
+                const generation = testMode
+                    ? puter.ai.txt2img(prompt, true)
+                    : puter.ai.txt2img(prompt, options);
+                const image = await Promise.race([
+                    generation,
+                    new Promise((_, reject) => setTimeout(
+                        () => reject(new Error('Puter image generation timed out. Check sign-in and permissions.')),
+                        90000
+                    ))
+                ]);
+                const imageUrl = image.src;
+
+                const element = document.getElementById(elementId);
+                if (element) {
+                    const img = document.createElement('img');
+                    img.src = imageUrl;
+                    element.innerHTML = '';
+                    element.appendChild(img);
+
+                    // Download button on click
+                    element.style.cursor = 'pointer';
+                    element.onclick = () => downloadImage(img.src);
+                }
+
+                generatedImages.push({
+                    url: imageUrl,
+                    prompt,
+                    timestamp: new Date()
+                });
+
+                updateStatus(`Ready (${generatedImages.length} images generated)`);
+            } catch (error) {
+                const element = document.getElementById(elementId);
+                if (element) {
+                    element.innerHTML = `<div class="loading" style="color: #f87171;">Error</div>`;
+                }
+                console.error('Image generation error:', error);
+                updateStatus('Image generation failed');
+            }
+        }
+
+        function downloadImage(src) {
+            const link = document.createElement('a');
+            link.href = src;
+            link.download = `thumbnail-${Date.now()}.png`;
+            link.click();
+        }
+
+        function generateWithPrompt(template) {
+            const prompts = {
+                'blues-guitarist': MASTER_IMAGE_PROMPT,
+                'jazz-club': MASTER_IMAGE_PROMPT + ' Add jazz club ambiance with warm amber lighting and vintage decor in the background.'
+            };
+
+            if (prompts[template]) {
+                const gallery = document.getElementById('imageGallery');
+                for (let i = 0; i < 2; i++) {
+                    const item = document.createElement('div');
+                    item.className = 'gallery-item';
+                    item.id = `quick-${Date.now()}-${i}`;
+
+                    const loader = document.createElement('div');
+                    loader.className = 'loading';
+                    loader.textContent = 'Creating...';
+                    item.appendChild(loader);
+                    gallery.appendChild(item);
+
+                    generateSingleImage(item.id, prompts[template]);
+                }
+                addMessage(`🎬 Quick generating ${template} thumbnails...`, false);
+            }
+        }
+
+        function clearGallery() {
+            document.getElementById('imageGallery').innerHTML = '';
+            generatedImages = [];
+            addMessage('🗑️ Gallery cleared', false);
+        }
+
+        // Welcome message
+        window.addEventListener('load', async () => {
+            try {
+                // Try to authenticate with Puter
+                const user = await puter.auth.getUser?.();
+                addMessage(`👋 Welcome! I'm your AI assistant powered by Puter. I can help you with:\n\n• Chat about any topic\n• Generate professional YouTube thumbnails\n• Provide video production advice\n• Answer questions about content creation\n\nTry saying "Generate 4 thumbnails" or just chat with me!`, false);
+                updateStatus(`Ready - ${user?.name || 'Guest'}`);
+            } catch (e) {
+                addMessage(`👋 Welcome! I'm your AI assistant powered by Puter. I can help you generate professional YouTube thumbnails and answer your questions about content creation.`, false);
+                updateStatus('Ready');
+            }
+        });
+    </script>
+</body>
+</html>

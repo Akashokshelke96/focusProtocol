@@ -1,0 +1,152 @@
+# ============================================
+# Long Form Video Generator - .gitignore
+# Code-only repo: exclude all media/binaries
+# ============================================
+
+# ---- Environment & Secrets ----
+.env
+.env.local
+.env.test
+.env.*.local
+
+# ---- Credentials & Tokens ----
+credentials/
+tokens/
+*.token
+*.pkl
+youtube_token.json
+youtube_upload_schedule.json
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+env/
+venv/
+ENV/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# ---- IDE ----
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ---- Media & Binary files (not tracked) ----
+# Images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.bmp
+*.webp
+*.tiff
+
+# Audio
+*.wav
+*.mp3
+*.aac
+*.m4a
+*.flac
+*.ogg
+
+# Video
+*.mp4
+*.mkv
+*.mov
+*.avi
+*.webm
+
+# Subtitles
+*.srt
+
+# Archives
+*.7z
+*.zip
+*.tar
+*.gz
+
+# ---- Allow specific tracked assets ----
+# Watermark branding (small PNG)
+!watermark/watermark.png
+
+# ---- Generated / Runtime directories ----
+jobs/
+media/
+output/
+logs/
+music/
+backgroundImages/
+thumbnail/
+subscribeVideo/
+mega_compilation_library/
+New folder/
+OpenMontage/
+app/output/
+app/jobs/images/
+app/jobs/music/
+app/jobs/thumbnails/
+app/jobs/videos/
+app/media/images/
+app/media/music/
+app/media/thumbnails/
+app/media/videos/
+app/media/audio/
+
+# ---- FFmpeg binaries (user must install locally) ----
+ffmpeg/
+ffmpeg.7z
+ffmpeg.zip
+
+# ---- Astrofox (large Node.js subproject) ----
+astrofox/
+
+# ---- Docs screenshots (generated images) ----
+docs/*.png
+
+# ---- Log files ----
+*.log
+server.log
+painted_soul_test.log
+
+# ---- Misc generated files ----
+bash.exe.stackdump
+offline_generated_audio.wav
+temp_demo_audio.wav
+party_song_5_minutes.mp3
+pinterest
+
+# ---- Testing / Coverage ----
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---- Temporary ----
+*.tmp
+*.temp
+
+# ---- Agent/Copilot metadata ----
+.agents/
+.claude/
+skills-lock.json
+project-inventory.json

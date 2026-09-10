@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Metadata Generator - Silent Dark Blues</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #1a1a1a;
+            --secondary: #2d2d2d;
+            --accent: #dc3545;
+        }
+
+        body {
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%);
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        .navbar {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .navbar-brand {
+            font-weight: 700;
+            background: linear-gradient(90deg, var(--accent), #ff6b7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .container-main {
+            padding: 40px 20px;
+        }
+
+        .card {
+            background: var(--secondary);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+            border-radius: 12px;
+            margin-bottom: 20px;
+        }
+
+        .card-header {
+            background: linear-gradient(90deg, rgba(220, 53, 69, 0.1), rgba(220, 53, 69, 0.05));
+            border-bottom: 2px solid var(--accent);
+        }
+
+        .card-title {
+            color: var(--accent);
+            font-weight: 700;
+            margin: 0;
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--accent), #ff6b7a);
+            border: none;
+            font-weight: 600;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, #ff6b7a, var(--accent));
+            color: white;
+        }
+
+        .form-control, .form-select, textarea {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+            color: #e0e0e0;
+            border-radius: 8px;
+        }
+
+        .form-control:focus, .form-select:focus, textarea:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: var(--accent);
+            color: #e0e0e0;
+            box-shadow: 0 0 15px rgba(220, 53, 69, 0.2);
+        }
+
+        .form-label {
+            color: #b0b0b0;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+
+        .metadata-display {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 4px solid var(--accent);
+            border-radius: 8px;
+            padding: 20px;
+            margin-top: 20px;
+        }
+
+        .metadata-section {
+            margin-bottom: 20px;
+        }
+
+        .metadata-label {
+            color: var(--accent);
+            font-weight: 700;
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+        }
+
+        .metadata-value {
+            color: #e0e0e0;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.02);
+            border-radius: 6px;
+            word-break: break-word;
+        }
+
+        .tag-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .tag {
+            background: rgba(220, 53, 69, 0.2);
+            border: 1px solid rgba(220, 53, 69, 0.4);
+            color: #ff6b7a;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(220, 53, 69, 0.3);
+            border-radius: 50%;
+            border-top-color: var(--accent);
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .header-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+            background: linear-gradient(90deg, var(--accent), #ff6b7a);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .alert-success {
+            background: rgba(40, 167, 69, 0.1);
+            border: 1px solid rgba(40, 167, 69, 0.3);
+            color: #5ade5a;
+        }
+
+        .alert-error {
+            background: rgba(220, 53, 69, 0.1);
+            border: 1px solid rgba(220, 53, 69, 0.3);
+            color: #ff6b7a;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar navbar-expand-lg navbar-dark">
+        <div class="container-fluid">
+            <a class="navbar-brand" href="/"><i class="fas fa-music"></i> Silent Dark Blues</a>
+            <div class="collapse navbar-collapse">
+                <ul class="navbar-nav ms-auto">
+                    <li class="nav-item"><a class="nav-link" href="/">Dashboard</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/metadata">Metadata</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/health">Health</a></li>
+                </ul>
+            </div>
+        </div>
+    </nav>
+
+    <div class="container-main">
+        <h1 class="header-title"><i class="fas fa-pen"></i> Metadata Generator</h1>
+        <p style="color: #999; margin-bottom: 30px;">Generate YouTube-optimized titles, descriptions, tags & hashtags</p>
+
+        <div class="row">
+            <!-- Input Form -->
+            <div class="col-md-6 mb-4">
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title"><i class="fas fa-sliders-h"></i> Configuration</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <label class="form-label">Episode Number</label>
+                            <input type="number" class="form-control" id="metaEpisode" value="1" min="1">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Duration (minutes)</label>
+                            <input type="number" class="form-control" id="metaDuration" value="20" min="1">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Number of Songs</label>
+                            <input type="number" class="form-control" id="metaSongs" value="4" min="1">
+                        </div>
+
+                        <div class="mb-3">
+                            <label class="form-label">Song Titles (comma separated)</label>
+                            <textarea class="form-control" id="metaTitles" rows="4" placeholder="Song 1, Song 2, Song 3, Song 4"></textarea>
+                        </div>
+
+                        <button class="btn btn-primary w-100" onclick="generateMetadata()">
+                            <i class="fas fa-wand-magic-sparkles"></i> Generate Metadata
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Output Display -->
+            <div class="col-md-6 mb-4">
+                <div id="metadataOutput">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title"><i class="fas fa-check-circle"></i> Generated Metadata</h5>
+                        </div>
+                        <div class="card-body">
+                            <p class="text-muted">Generated metadata will appear here...</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Sample Output -->
+        <div class="card">
+            <div class="card-header">
+                <h5 class="card-title"><i class="fas fa-book"></i> Quick Reference</h5>
+            </div>
+            <div class="card-body">
+                <p><strong>Title Requirements:</strong> Maximum 60 characters, SEO-optimized, includes duration</p>
+                <p><strong>Description:</strong> 1500+ characters, includes channel info, timestamps, subscribe CTA</p>
+                <p><strong>Tags:</strong> 15-20 relevant tags for dark blues, gentleman music, study music niche</p>
+                <p><strong>Hashtags:</strong> 5-8 hashtags for social media optimization</p>
+                <p class="mb-0"><strong>Result:</strong> YouTube-ready metadata optimized for search rankings</p>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        async function generateMetadata() {
+            const episode = parseInt(document.getElementById('metaEpisode').value);
+            const duration = parseInt(document.getElementById('metaDuration').value);
+            const numSongs = parseInt(document.getElementById('metaSongs').value);
+            const titlesText = document.getElementById('metaTitles').value;
+
+            let songTitles = titlesText.split(',').map(s => s.trim()).filter(s => s);
+            if (songTitles.length === 0) {
+                songTitles = Array.from({length: numSongs}, (_, i) => `Track ${i+1}`);
+            }
+
+            const btn = event.target;
+            btn.disabled = true;
+            btn.innerHTML = '<div class="loading"></div> Generating...';
+
+            try {
+                const response = await fetch('/api/metadata/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        compilation_id: `gen_${Date.now()}`,
+                        episode_number: episode,
+                        duration_minutes: duration,
+                        song_titles: songTitles
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    const meta = data.data;
+                    displayMetadata(meta);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                alert('Error generating metadata: ' + error);
+                console.error(error);
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-wand-magic-sparkles"></i> Generate Metadata';
+            }
+        }
+
+        function displayMetadata(meta) {
+            const tagsHtml = meta.tags.map(tag => `<span class="tag">${tag}</span>`).join('');
+            const hashtagsHtml = meta.hashtags.map(tag => `<span class="tag">${tag}</span>`).join('');
+
+            const html = `
+                <div class="card">
+                    <div class="card-header">
+                        <h5 class="card-title"><i class="fas fa-check-circle"></i> Generated Metadata</h5>
+                    </div>
+                    <div class="card-body">
+                        <div class="metadata-display">
+                            <div class="metadata-section">
+                                <div class="metadata-label"><i class="fas fa-heading"></i> Title</div>
+                                <div class="metadata-value">${escapeHtml(meta.title)}</div>
+                                <small class="text-muted">${meta.title.length}/60 characters</small>
+                            </div>
+
+                            <div class="metadata-section">
+                                <div class="metadata-label"><i class="fas fa-align-left"></i> Description</div>
+                                <div class="metadata-value" style="max-height: 200px; overflow-y: auto;">
+                                    ${escapeHtml(meta.description).replace(/\n/g, '<br>')}
+                                </div>
+                                <small class="text-muted">${meta.description.length} characters</small>
+                            </div>
+
+                            <div class="metadata-section">
+                                <div class="metadata-label"><i class="fas fa-tags"></i> Tags (${meta.tags.length})</div>
+                                <div class="tag-list">${tagsHtml}</div>
+                            </div>
+
+                            <div class="metadata-section">
+                                <div class="metadata-label"><i class="fas fa-hashtag"></i> Hashtags (${meta.hashtags.length})</div>
+                                <div class="tag-list">${hashtagsHtml}</div>
+                            </div>
+
+                            ${meta.seo_keywords ? `
+                            <div class="metadata-section">
+                                <div class="metadata-label"><i class="fas fa-key"></i> SEO Keywords</div>
+                                <div class="tag-list">
+                                    ${meta.seo_keywords.map(kw => `<span class="tag">${kw}</span>`).join('')}
+                                </div>
+                            </div>
+                            ` : ''}
+                        </div>
+
+                        <div class="alert alert-success mt-3">
+                            <i class="fas fa-check-circle"></i> Metadata generated successfully and ready for YouTube upload
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('metadataOutput').innerHTML = html;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

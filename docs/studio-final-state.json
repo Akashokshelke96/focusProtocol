@@ -1,0 +1,103 @@
+{
+  "channels": [
+    {
+      "id": "girls-music",
+      "profile_id": "dreamy"
+    },
+    {
+      "id": "bollywood",
+      "profile_id": "bollywood"
+    },
+    {
+      "id": "focus-protocol",
+      "profile_id": "jazz"
+    },
+    {
+      "id": "study-music",
+      "profile_id": "study"
+    }
+  ],
+  "verified_uploads": 4,
+  "restart_ids_preserved": true,
+  "study_job_id": "studio_464a6530f8ec498ca2a62f4780aacaa5_1",
+  "study_qc": {
+    "checked_at": "2026-09-10T11:58:09.864879+00:00",
+    "checks": [
+      {
+        "detail": "",
+        "name": "Playable MP4 and metadata",
+        "status": "pass"
+      },
+      {
+        "detail": "1280 \u00d7 720",
+        "name": "Resolution",
+        "status": "pass"
+      },
+      {
+        "detail": "15 FPS",
+        "name": "Frame rate",
+        "status": "pass"
+      },
+      {
+        "detail": "59.93 seconds",
+        "name": "Target duration",
+        "status": "pass"
+      },
+      {
+        "detail": "aac \u00b7 2 channels",
+        "name": "Audio duration",
+        "status": "pass"
+      },
+      {
+        "detail": "",
+        "name": "One background",
+        "status": "pass"
+      },
+      {
+        "detail": "",
+        "name": "Waveform",
+        "status": "pass"
+      },
+      {
+        "detail": "1280 \u00d7 720",
+        "name": "Thumbnail dimensions",
+        "status": "pass"
+      },
+      {
+        "detail": "",
+        "name": "Decode sample at 0s",
+        "status": "pass"
+      },
+      {
+        "detail": "",
+        "name": "Decode sample at 30s",
+        "status": "pass"
+      },
+      {
+        "detail": "",
+        "name": "Decode sample at 58s",
+        "status": "pass"
+      },
+      {
+        "detail": "Review image and channel fit before publishing.",
+        "name": "Local image fallback",
+        "status": "warning"
+      }
+    ],
+    "fingerprint": [
+      [
+        "jobs\\studio_464a6530f8ec498ca2a62f4780aacaa5_1\\output\\final_90min_video.mp4",
+        4091160,
+        1789041486035006100
+      ],
+      [
+        "jobs\\studio_464a6530f8ec498ca2a62f4780aacaa5_1\\thumbnail\\thumbnail.png",
+        946755,
+        1789041453599138600
+      ]
+    ],
+    "scope": "Stream checks and three decode samples; not a full-frame corruption or copyright scan.",
+    "status": "warning"
+  },
+  "worker_error": null
+}
