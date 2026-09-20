@@ -91,7 +91,8 @@ Thumbs.db
 !watermark/watermark.png
 
 # ---- Generated / Runtime directories ----
-jobs/
+/jobs/
+app/jobs/*.db
 media/
 output/
 logs/
@@ -150,3 +151,9 @@ htmlcov/
 .claude/
 skills-lock.json
 project-inventory.json
+
+# Shipped Bourbon With Blues branding
+!watermark/bourbon-with-blues.png
+
+# Reusable generated six-second visualizer cache
+asset/generated/

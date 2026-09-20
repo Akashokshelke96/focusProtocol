@@ -1,6 +1,7 @@
 """
 Audio mixing and normalization
 """
+from app.utils.ffmpeg import no_window_flags
 from pathlib import Path
 from typing import Optional
 import subprocess
@@ -44,7 +45,7 @@ class AudioMixer:
                 str(output_path),
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, **no_window_flags())
             if result.returncode != 0:
                 logger.error(f"FFmpeg error: {result.stderr}")
                 return False
@@ -69,7 +70,7 @@ class AudioMixer:
                 str(output_path),
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, **no_window_flags())
             if result.returncode != 0:
                 logger.error(f"FFmpeg error: {result.stderr}")
                 return False
@@ -111,7 +112,7 @@ class AudioMixer:
                 str(output_path),
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run(cmd, capture_output=True, text=True, **no_window_flags())
             if result.returncode != 0:
                 logger.error(f"FFmpeg error: {result.stderr}")
                 return False

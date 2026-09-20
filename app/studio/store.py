@@ -18,11 +18,18 @@ class StudioStore:
         self.guard = threading.RLock()
 
     def read(self):
-        return read_json(self.root / 'operations.json', {
-            'version': 1, 'channels': [Channel(id='focus-protocol', name='Focus Protocol').model_dump()],
+        state = read_json(self.root / 'operations.json', {
+            'version': 1, 'channels': [Channel(id='focus-protocol', name='Camping With Blues').model_dump()],
             'profiles': [p.model_dump() for p in DEFAULT_PROFILES], 'content': [], 'batches': [],
             'paused': True, 'activity': [], 'assets': {},
         })
+
+        if not any(p['id'] == 'blues' for p in state['profiles']):
+            state['profiles'].append(next(p.model_dump() for p in DEFAULT_PROFILES if p.id == 'blues'))
+        for channel in state['channels']:
+            if channel['id'] == 'focus-protocol' and channel['name'] == 'Focus Protocol':
+                channel.update(name='Camping With Blues', profile_id='blues', watermark_enabled=False)
+        return state
 
     @contextmanager
     def transaction(self):

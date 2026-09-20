@@ -1,5 +1,7 @@
 # YouTube Automation Engine
 
+The active local music-video pipeline is documented in [Production hardening and render settings](docs/production-hardening.md) and [Camping With Blues branding](docs/bourbon-with-blues.md). These documents supersede the legacy topic/narration workflow below for the studio.
+
 Generate professional YouTube videos automatically from topics using Gemini LLM, Pexels, Pinterest, AceMusic, and FFmpeg.
 
 ## Features

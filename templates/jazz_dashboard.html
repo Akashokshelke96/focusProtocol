@@ -484,13 +484,25 @@
                     <label for="duration-minutes">Video Duration (minutes)</label>
                     <input type="number" id="duration-minutes" min="1" max="180" value="3">
                 </div>
+
+                <div class="control-item">
+                    <label for="music-dir">Music Directory (genre path)</label>
+                    <input type="text" id="music-dir" placeholder="e.g. D:\Long Form Video Generator\music\jazz" style="width: 320px;">
+                </div>
             </div>
 
             <div class="controls" style="display: flex; gap: 24px; margin: 16px 0;">
-                <label><input type="checkbox" id="waveform-enabled" {% if settings.waveform_enabled %}checked{% endif %}> Enable waveform</label>
-                <label><input type="checkbox" id="waveform-filter-enabled" {% if settings.waveform_filter_enabled %}checked{% endif %}> Enable filter / smoothing</label>
+                <label for="quality-preset">Video quality</label>
+                <select id="quality-preset">
+                    {% for preset in ['480p', '720p', '1080p'] %}
+                    <option value="{{ preset }}" {% if (settings.quality_preset|default('1080p')) == preset %}selected{% endif %}>{{ preset }}</option>
+                    {% endfor %}
+                </select>
+                <label><input type="checkbox" id="visualizer-enabled" {% if settings.visualizer_enabled %}checked{% endif %}> Audio Visualizer</label>
+                <label>Video filter <select id="video-filter">{% for key, label in [('none','Original'),('vintage','Vintage Film'),('old_film','Old Cinema'),('warm_film','Warm Film'),('faded_film','Faded Film'),('noir','Noir'),('sepia','Sepia'),('film_grain','Soft Grain'),('cool_cinematic','Cool Cinematic'),('soft_vignette','Soft Vignette')] %}<option value="{{ key }}" {% if settings.visual_effect == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
+                <label>Intensity <select id="filter-intensity"><option value="0.06">Subtle</option><option value="0.12">Medium</option><option value="0.20">Strong</option></select></label>
                 <label><input type="checkbox" id="watermark-enabled" {% if settings.watermark_enabled %}checked{% endif %}> Enable watermark</label>
-                <label><input type="checkbox" id="subscribe-overlay-enabled" {% if settings.subscribe_overlay_enabled %}checked{% endif %}> Show subscribe popup every 5 minutes</label>
+                <label><input type="checkbox" id="subscribe-overlay-enabled" {% if settings.subscribe_overlay_enabled %}checked{% endif %}> Show subscribe popup every 8 minutes</label>
             </div>
 
             <div class="button-group">
@@ -616,10 +628,13 @@
                         video_count: videoCount,
                         test_mode: testMode,
                         duration_minutes: durationMinutes,
-                        waveform_enabled: document.getElementById('waveform-enabled').checked,
-                        waveform_filter_enabled: document.getElementById('waveform-filter-enabled').checked,
+                        quality_preset: document.getElementById('quality-preset').value,
+                        visualizer_enabled: document.getElementById('visualizer-enabled').checked,
+                        visual_effect: document.getElementById('video-filter').value,
+                        visual_effect_opacity: Number(document.getElementById('filter-intensity').value),
                         watermark_enabled: document.getElementById('watermark-enabled').checked,
-                        subscribe_overlay_enabled: document.getElementById('subscribe-overlay-enabled').checked
+                        subscribe_overlay_enabled: document.getElementById('subscribe-overlay-enabled').checked,
+                        music_dir: document.getElementById('music-dir').value.trim() || null
                     })
                 });
 
@@ -739,8 +754,8 @@
                         <div class="metadata-value">${(job.metadata.selected_music || []).map(m => m.split('/').pop()).join('<br>')}</div>
                     </div>
                     <div class="metadata-item">
-                        <div class="metadata-label">Waveform</div>
-                        <div class="metadata-value">${job.metadata.waveform_enabled ? 'Enabled - centered at 80% height' : 'Disabled'}</div>
+                        <div class="metadata-label">Audio Visualizer</div>
+                        <div class="metadata-value">${job.metadata.visualizer_enabled ? 'Looping waveform · bottom-left' : 'Disabled'}</div>
                     </div>
                 `;
             }
@@ -837,6 +852,10 @@
             try {
                 const response = await fetch(`${API_BASE}/youtube/publish`, {method: 'POST'});
                 const data = await response.json();
+                if (response.status === 401 && data.auth_url) {
+                    window.location.href = data.auth_url;
+                    return;
+                }
                 if (!response.ok) throw new Error(data.message);
                 document.getElementById('publishing-status').textContent = data.message;
                 setTimeout(showPublishingQueue, 500);
@@ -852,6 +871,10 @@
             try {
                 const response = await fetch(`${API_BASE}/video/${jobId}/upload`, { method: 'POST' });
                 const data = await response.json();
+                if (response.status === 401 && data.auth_url) {
+                    window.location.href = data.auth_url;
+                    return;
+                }
                 if (!response.ok || !['accepted', 'success'].includes(data.status)) throw new Error(data.message || 'Upload failed');
                 if (data.status === 'accepted') {
                     showPublishingQueue();

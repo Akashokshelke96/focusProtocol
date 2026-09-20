@@ -3,6 +3,7 @@ Jazz Video Generation API
 RESTful backend for long-form jazz video generation and monitoring
 """
 import json
+import subprocess
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -18,12 +19,14 @@ logger = get_logger("api.jazz")
 
 app = Flask(__name__, template_folder="../../templates", static_folder="../../static")
 CORS(app)
+app.config['MAX_CONTENT_LENGTH'] = 512 * 1024 * 1024
 setup_logging(get_settings().log_level)
 
 # Global state
 current_job = None
 job_manager = JobManager()
 generation_thread = None
+active_orchestrator = None
 publishing_task = {}
 publishing_guard = threading.Lock()
 
@@ -40,6 +43,12 @@ def protect_local_actions():
 def _video_path(job_id):
     """Return the current run-local output path with legacy fallback."""
     run_dir = Path("jobs").resolve() / job_id
+    from app.studio.store import read_json
+    saved = read_json(run_dir / 'metadata.json', {}).get('video_path')
+    if saved:
+        path = Path(saved).resolve()
+        if path.is_relative_to(run_dir) and path.is_file():
+            return path
     run_output = run_dir / "output" / "final_90min_video.mp4"
     return run_output if run_output.exists() else run_dir / "video.mp4"
 
@@ -69,7 +78,7 @@ def health():
 @app.route('/api/jazz/generate', methods=['POST'])
 def start_generation():
     """Start a new jazz video generation."""
-    global current_job, generation_thread
+    global current_job, generation_thread, active_orchestrator
 
     try:
         data = request.get_json() or {}
@@ -89,27 +98,44 @@ def start_generation():
 
         # Start generation in background
         settings = get_settings().model_copy(deep=True)
-        for key in ("waveform_enabled", "waveform_filter_enabled", "watermark_enabled", "subscribe_overlay_enabled"):
+        for key in ("visualizer_enabled", "watermark_enabled", "subscribe_overlay_enabled"):
             if key in data:
                 if type(data[key]) is not bool:
                     return jsonify({"status": "error", "message": f"{key} must be a boolean"}), 400
                 setattr(settings, key, data[key])
-        orchestrator = LongFormJazzOrchestrator(settings)
+        if 'waveform_enabled' in data and 'visualizer_enabled' not in data:
+            if type(data['waveform_enabled']) is not bool:
+                return jsonify(message='visualizer_enabled must be a boolean'), 400
+            settings.visualizer_enabled = data['waveform_enabled']
+        settings.waveform_enabled = False
+        from app.config.settings import Settings
+        overrides = {key.upper(): data[key] for key in ('quality_preset', 'visual_effect', 'visual_effect_opacity') if key in data}
+        try:
+            settings = Settings.model_validate({**settings.model_dump(by_alias=True), **overrides})
+        except ValueError:
+            return jsonify(message='Choose 480p, 720p, or 1080p and a valid video filter/intensity'), 400
+        context = {}
+        music_dir = data.get('music_dir')
+        if music_dir:
+            context['channel'] = {'music_dir': music_dir}
+        orchestrator = LongFormJazzOrchestrator(settings, context=context)
+        active_orchestrator = orchestrator
+
+        job_id = datetime.now().strftime("%Y%m%d_%H%M%S_jazz")
+        started_at = datetime.now().astimezone()
+        current_job = {
+            "job_id": job_id,
+            "status": "running",
+            "video_count": video_count,
+            "test_mode": test_mode,
+            "started_at": started_at.isoformat(),
+            "duration_minutes": duration_minutes,
+            "progress": 0,
+            "message": "Initializing..."
+        }
 
         def run_generation():
             global current_job
-            job_id = datetime.now().strftime("%Y%m%d_%H%M%S_jazz")
-            started_at = datetime.now().astimezone()
-            current_job = {
-                "job_id": job_id,
-                "status": "running",
-                "video_count": video_count,
-                "test_mode": test_mode,
-                "started_at": started_at.isoformat(),
-                "duration_minutes": duration_minutes,
-                "progress": 0,
-                "message": "Initializing..."
-            }
 
             try:
                 success = orchestrator.run(
@@ -211,7 +237,20 @@ def cancel_generation():
             "message": "No generation in progress"
         }), 400
 
-    return jsonify({'status': 'error', 'message': 'The active render must finish. Pause production in Studio to stop additional queued videos.'}), 409
+    try:
+        if active_orchestrator is None:
+            raise ValueError('No generation worker is available to cancel')
+        active_orchestrator.cancel_requested = True
+        if active_orchestrator.last_job_ids:
+            directory = Path('jobs') / active_orchestrator.last_job_ids[-1]
+            directory.mkdir(parents=True, exist_ok=True)
+            (directory / 'cancel.request').touch()
+        current_job['status'] = 'cancelling'
+        current_job['message'] = 'Cancellation requested; the owned worker will stop at its next checkpoint'
+        return jsonify({'status': 'success', 'message': current_job['message']}), 202
+    except Exception as error:
+        logger.error('Failed to cancel active generation: %s', error, exc_info=True)
+        return jsonify({'status': 'error', 'message': str(error)}), 500
 
 
 # ============================================================================
@@ -279,11 +318,21 @@ def component_status():
         1 for path in thumbnail_dir.glob("*")
         if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
     ) if thumbnail_dir.exists() else 0
-    image_ready = bool(settings.colab_image_api_url)
+    from app.providers.media_history import validate_background
+    backgrounds = []
+    for folder in (Path('backgroundImages'),):
+        for path in folder.glob('*'):
+            if path.is_file() and path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'}:
+                try:
+                    validate_background(path)
+                    backgrounds.append(path)
+                except Exception:
+                    continue
+    image_ready = bool(backgrounds)
     return jsonify({"status": "success", "components": {
-        "image_generator": {"status": "healthy" if image_ready else "warning", "message": "Configured" if image_ready else "COLAB_IMAGE_API_URL missing"},
+        "image_generator": {"status": "healthy" if image_ready else "error", "message": f"Local only: {len(backgrounds)} valid background images"},
         "background_prompt": {"status": "healthy" if background_prompts.exists() else "error"},
-        "thumbnail": {"status": "healthy" if local_thumbnail_count else "error", "message": f"{local_thumbnail_count} local thumbnail(s) available"},
+        "thumbnail": {"status": "healthy" if local_thumbnail_count else "error", "message": f"{local_thumbnail_count} immutable local thumbnail source(s); no background fallback"},
         "music": {"status": "healthy", "message": "Local music pipeline ready"},
         "video_renderer": {"status": "healthy", "message": "Static FFmpeg renderer ready"},
         "youtube": _youtube_service().connection_status(),
@@ -338,6 +387,13 @@ def upload_video(job_id=None):
     """Preserve legacy action URLs while using channel-aware durable batches."""
     from app.studio.api import service
     try:
+        if not _youtube_service().connection_status().get("connected"):
+            return jsonify({
+                'status': 'unauthorized', 
+                'message': 'Connect to YouTube first',
+                'auth_url': '/api/jazz/youtube/connect'
+            }), 401
+            
         ids = [job_id] if job_id else [r['job_id'] for r in service.jobs() if r['stage'] == 'ready_to_publish']
         batch = service.enqueue_publish(ids)
         return jsonify({'status': 'accepted', 'message': 'Publishing batch queued', 'batch': batch}), 202

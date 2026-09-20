@@ -47,14 +47,15 @@ def test_api_overrides_are_isolated(monkeypatch):
         def is_alive(self): return False
     monkeypatch.setattr(jazz_api.threading, "Thread", Thread)
     client = jazz_api.app.test_client()
-    response = client.post('/api/jazz/generate', json={"waveform_enabled": False, "waveform_filter_enabled": False, "watermark_enabled": False})
+    response = client.post('/api/jazz/generate', json={"waveform_enabled": False, "watermark_enabled": False})
     assert response.status_code == 202
     assert not captured[-1].waveform_enabled
-    assert not captured[-1].waveform_filter_enabled
+    assert not captured[-1].visualizer_enabled
     assert not captured[-1].watermark_enabled
     assert baseline.waveform_enabled
     assert client.post('/api/jazz/generate', json={}).status_code == 202
-    assert captured[-1].waveform_enabled
+    assert not captured[-1].waveform_enabled
+    assert captured[-1].visualizer_enabled == baseline.visualizer_enabled
     assert client.post('/api/jazz/generate', json={"waveform_enabled": "false"}).status_code == 400
 
 
@@ -63,6 +64,10 @@ def test_dashboard_controls():
     with app.test_request_context():
         from flask import render_template
         html = render_template('jazz_dashboard.html', settings=Settings(_env_file=None))
-    for control in ('waveform-enabled', 'waveform-filter-enabled', 'watermark-enabled', 'subscribe-overlay-enabled'):
+    for control in ('visualizer-enabled', 'watermark-enabled', 'subscribe-overlay-enabled'):
         assert f'id="{control}"' in html
         assert f"getElementById('{control}').checked" in html
+
+    for control in ("video-filter", "filter-intensity"):
+        assert f'id="{control}"' in html
+    assert 'id="waveform-enabled"' not in html

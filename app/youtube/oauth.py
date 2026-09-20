@@ -52,7 +52,7 @@ class YouTubeService:
 
         flow = Flow.from_client_config(self._client_config(), scopes=SCOPES)
         flow.redirect_uri = self.settings.youtube_redirect_uri
-        url, state = flow.authorization_url(access_type="offline", prompt="consent", include_granted_scopes="true")
+        url, state = flow.authorization_url(access_type="offline", prompt="consent select_account", include_granted_scopes="true")
         state_file = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
         attempts = state_file.get('attempts') or ([state_file] if state_file.get('state') else [])
         attempts = [item for item in attempts if time.time() - item.get('created', 0) <= 600]
@@ -100,7 +100,8 @@ class YouTubeService:
         credentials = Credentials.from_authorized_user_file(str(self.token_path))
         if credentials.expired and credentials.refresh_token:
             from google.auth.transport.requests import Request
-            credentials.refresh(Request())
+            from functools import partial
+            credentials.refresh(partial(Request(), timeout=20))
             write_json(self.token_path, json.loads(credentials.to_json()))
         return credentials if credentials.valid else None
 
@@ -109,8 +110,7 @@ class YouTubeService:
             credentials = self._credentials()
             if not credentials:
                 return {"connected": False, "channel_name": None, "error": "Connect YouTube once to authorize your channel."}
-            from googleapiclient.discovery import build
-            response = build("youtube", "v3", credentials=credentials).channels().list(part="snippet", mine=True).execute()
+            response = self.client(timeout=20).channels().list(part="snippet", mine=True).execute()
             items = response.get("items", [])
             name = items[0].get("snippet", {}).get("title") if items else None
             return {"connected": bool(items), "channel_name": name, "channel_id": items[0]['id'] if items else None,
@@ -212,14 +212,14 @@ class YouTubeService:
         if not credentials or not any(credentials.has_scopes([scope]) for scope in ('https://www.googleapis.com/auth/youtube', 'https://www.googleapis.com/auth/youtube.force-ssl')):
             raise ValueError('Reconnect this channel in Channels to authorize editing existing YouTube metadata and schedules. New uploads remain available.')
 
-    def client(self):
+    def client(self, timeout=60):
         import httplib2
         import google_auth_httplib2
         from googleapiclient.discovery import build
         credentials = self._credentials()
         if not credentials:
             raise RuntimeError('Connect YouTube once before publishing.')
-        http = httplib2.Http(timeout=60)
+        http = httplib2.Http(timeout=timeout)
         http.follow_redirects = False
         transport = google_auth_httplib2.AuthorizedHttp(credentials, http=http)
         return build('youtube', 'v3', http=transport, cache_discovery=False)

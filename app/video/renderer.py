@@ -1,6 +1,7 @@
 """
 FFmpeg video renderer
 """
+from app.utils.ffmpeg import no_window_flags
 from pathlib import Path
 from typing import Optional, List
 import subprocess
@@ -52,7 +53,7 @@ class FFmpegRenderer:
             cmd.extend(["-y", str(output_path)])
 
             logger.info(f"Running FFmpeg: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, **no_window_flags())
 
             if result.returncode != 0:
                 logger.error(f"FFmpeg error: {result.stderr}")
@@ -86,7 +87,7 @@ class FFmpegRenderer:
                 capture_output=True,
                 text=True,
                 timeout=10,
-            )
+             **no_window_flags())
 
             if result.returncode != 0:
                 logger.warning(f"ffprobe failed: {result.stderr}")
@@ -124,7 +125,7 @@ class FFmpegRenderer:
                 str(output_path),
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=300, **no_window_flags())
 
             concat_file.unlink()
 

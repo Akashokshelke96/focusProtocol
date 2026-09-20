@@ -13,7 +13,9 @@ def setup(tmp_path, monkeypatch):
     settings = Settings(_env_file=None, YOUTUBE_UPLOAD_ENABLED=True, DATABASE_PATH=str(tmp_path/'absent.db'))
     service = Mock()
     service.channel_videos.return_value = []
-    def upload(path, metadata, uploaded_callback):
+    def upload(path, metadata, uploaded_callback, progress_callback=None):
+        if progress_callback:
+            progress_callback(40)
         service.video_details.return_value = {'snippet': metadata, 'status': {'privacyStatus': metadata['privacy_status'], 'publishAt': metadata.get('scheduled_publish_time')}, 'processingDetails': {'processingStatus': 'succeeded'}}
         result = {'video_id': 'abc123'}
         uploaded_callback(result)
@@ -74,7 +76,7 @@ def test_uncertain_upload_never_retries_blindly(setup):
 
 def test_id_persisted_before_thumbnail_failure(setup):
     q,service,add=setup; add('a')
-    def upload(path,metadata,uploaded_callback):
+    def upload(path,metadata,uploaded_callback, progress_callback=None):
         uploaded_callback({'video_id':'saved'})
         raise RuntimeError('thumbnail failure')
     service.upload.side_effect=upload

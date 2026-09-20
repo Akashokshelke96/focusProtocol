@@ -69,7 +69,7 @@ def test_content_duplicate_and_recovery(tmp_path):
     with service.store.transaction() as state:
         state['content'][0]['stage'] = 'generating'
     service._recover()
-    assert service.store.read()['content'][0]['stage'] == 'ready'
+    assert service.store.read()['content'][0]['stage'] == 'interrupted'  # Metadata alone is not verified completion.
 
 
 def test_channel_scoped_scan(tmp_path):
@@ -79,7 +79,7 @@ def test_channel_scoped_scan(tmp_path):
     assert [r['job_id'] for r in PublishingQueue(settings,tmp_path,channel_id='a').scan()] == ['a']
 
 
-def test_failed_publishing_blocks_production(tmp_path, monkeypatch):
+def test_failed_publishing_does_not_block_explicit_production(tmp_path, monkeypatch):
     service = StudioService(tmp_path)
     service.add_content('focus-protocol', ['Night'], planned=True)
     with service.store.transaction() as state:
@@ -88,7 +88,7 @@ def test_failed_publishing_blocks_production(tmp_path, monkeypatch):
     generate = Mock()
     monkeypatch.setattr(service, '_generate', generate)
     service.tick()
-    generate.assert_not_called()
+    generate.assert_called_once()
 
 
 def test_http_context_and_no_secrets(tmp_path, monkeypatch):
@@ -137,6 +137,7 @@ def test_legacy_upload_route_keeps_clicked_video(monkeypatch):
     from app.studio.api import service
     enqueue = Mock(return_value={'id':'batch'})
     monkeypatch.setattr(service, 'enqueue_publish', enqueue)
+    monkeypatch.setattr('app.api.jazz_api._youtube_service', lambda: Mock(connection_status=lambda: {'connected': True}))
     response = app.test_client().post('/api/jazz/video/selected-video/upload', json={})
     assert response.status_code == 202
     enqueue.assert_called_once_with(['selected-video'])

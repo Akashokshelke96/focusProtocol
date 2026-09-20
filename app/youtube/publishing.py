@@ -1,4 +1,5 @@
 """File-based publishing layered on existing job directories; no queue database."""
+from app.utils.ffmpeg import no_window_flags
 import hashlib
 import json
 import math
@@ -57,10 +58,13 @@ def next_slot(settings, reserved, now=None):
 
 
 def validate_video(path, metadata):
+    if metadata.get('assets'):
+        from app.studio.assets import verify_job_assets
+        verify_job_assets(metadata)
     path = Path(path)
     if not path.is_file() or path.stat().st_size == 0:
         raise ValueError(f'Video is missing or empty: {path}')
-    probe = subprocess.run([str(find_ffprobe()), '-v', 'error', '-show_format', '-show_streams', '-of', 'json', str(path)], capture_output=True, text=True, check=True, timeout=60)
+    probe = subprocess.run([str(find_ffprobe()), '-v', 'error', '-show_format', '-show_streams', '-of', 'json', str(path)], capture_output=True, text=True, check=True, timeout=60, **no_window_flags())
     data = json.loads(probe.stdout)
     duration = float(data['format'].get('duration', 0))
     kinds = [s.get('codec_type') for s in data['streams']]
@@ -85,8 +89,11 @@ def validate_video(path, metadata):
     if metadata.get('thumbnail_path'):
         from PIL import Image
         thumbnail = Path(metadata['thumbnail_path'])
-        if not thumbnail.is_file() or thumbnail.stat().st_size > 2 * 1024 * 1024:
-            raise ValueError('Thumbnail must exist and be under 2 MB')
+        if not thumbnail.is_file():
+            raise ValueError(f'Thumbnail is missing: {thumbnail}')
+        if thumbnail.stat().st_size > 2 * 1024 * 1024:
+            raise ValueError(f'Thumbnail {thumbnail.name} is {thumbnail.stat().st_size} bytes; YouTube accepts at most 2 MB. '
+                             'Add a smaller original to the thumbnail folder; the pipeline never resizes it.')
         with Image.open(thumbnail) as image:
             image.verify()
     return duration
@@ -134,6 +141,9 @@ class PublishingQueue:
                        'youtube_status': 'uploaded' if data.get('youtube_video_id') else 'pending',
                        'youtube_video_id': data.get('youtube_video_id'), 'retry_count': 0,
                        **state}
+                if data.get('assets'):
+                    row['assets'] = data['assets']
+                    row['thumbnail_path'] = data['assets']['thumbnail']['path']
                 if self.channel_id and row['channel_id'] != self.channel_id:
                     continue
                 # Repair old jazz jobs affected by the metadata f-string bug.
@@ -150,6 +160,14 @@ class PublishingQueue:
         return rows
 
     def save(self, row):
+        from app.youtube.display_status import publishing_state
+        display = publishing_state(row)
+        row.update(upload_status='uploaded' if display['uploaded'] else display['state'],
+                   thumbnail_status='uploaded' if row.get('thumbnail_uploaded') else ('failed' if row.get('youtube_status') == 'thumbnail_retry' else ('pending' if row.get('thumbnail_path') else 'not_requested')),
+                   metadata_status='verified' if row.get('metadata_verified') and not row.get('metadata_dirty') else 'pending',
+                   last_checked=display['last_checked'], upload_error=row.get('last_error'))
+        if display['state'] == 'published':
+            row.setdefault('published_time', row.get('publishing_verified_at'))
         write_json(self.root / row['job_id'] / 'youtube.json', row)
 
     def reconcile(self):
@@ -266,12 +284,20 @@ class PublishingQueue:
                     self.save(row)  # durable intent BEFORE any remote mutation
                     known[row['sha256']] = row
                     def completed(result):
-                        row.update(youtube_video_id=result['video_id'], youtube_status='uploaded', upload_timestamp=datetime.now(UTC).isoformat())
+                        row.update(youtube_video_id=result['video_id'], youtube_status='uploaded', upload_percent=100, upload_timestamp=datetime.now(UTC).isoformat())
                         row['upload_elapsed_seconds'] = round((datetime.now(UTC) - datetime.fromisoformat(row['upload_started_at'])).total_seconds(), 3)
                         row['metadata_dirty'] = False
                         self.save(row)  # persist ID BEFORE optional thumbnail upload
                     metadata = {**row, 'tags': list(row.get('tags', [])) + ['engine-sha256-' + row['sha256']]}
-                    result = self.service.upload(Path(row['video_path']), metadata, uploaded_callback=completed)
+                    last_percent = [-1]
+                    def progress(percent):
+                        # One durable update per percentage point; the video ID remains authoritative.
+                        value = min(100, max(0, int(percent)))
+                        if value != last_percent[0]:
+                            last_percent[0] = value
+                            row.update(upload_percent=value, upload_progress_at=datetime.now(UTC).isoformat())
+                            self.save(row)
+                    result = self.service.upload(Path(row['video_path']), metadata, progress_callback=progress, uploaded_callback=completed)
                     finish(self.service, self.settings, row, self.save, wait=wait)
                 except Exception as error:
                     row['last_error'] = str(error)

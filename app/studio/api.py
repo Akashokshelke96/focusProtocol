@@ -21,6 +21,8 @@ def local_writes():
         origin = request.headers.get('Origin')
         if origin and urlsplit(origin).netloc != request.host:
             return jsonify(error='Use the local studio to change state'), 403
+        if request.endpoint == 'studio.upload_media' and request.mimetype == 'multipart/form-data':
+            return
         if not isinstance(request.get_json(silent=True), dict):
             return jsonify(error='Send a JSON object'), 400
 
@@ -28,8 +30,14 @@ def local_writes():
 @studio.errorhandler(ValueError)
 @studio.errorhandler(RuntimeError)
 @studio.errorhandler(KeyError)
+@studio.errorhandler(OSError)
 def invalid(error):
     return jsonify(error=str(error)), 400
+
+
+@studio.errorhandler(413)
+def import_too_large(error):
+    return jsonify(error='Import is too large. Select fewer files (512 MB maximum per request).'), 413
 
 
 @studio.get('/state')
@@ -55,7 +63,19 @@ def save_profile():
 @studio.post('/content')
 def add_content():
     data = request.get_json()
-    return jsonify(items=service.add_content(data['channel_id'], data['titles'], data.get('duration_minutes'), data.get('planned', False)))
+    return jsonify(items=service.add_content(data['channel_id'], data['titles'], data.get('duration_minutes'), data.get('planned', False),
+                                            waveform_style=data.get('waveform_style'), waveform_enabled=data.get('visualizer_enabled', data.get('waveform_enabled')),
+                                            background_mode=data.get('background_mode', 'image'), lyrics_captions=data.get('lyrics_captions', False),
+                                              visual_effect=data.get('visual_effect'), visual_effect_opacity=data.get('visual_effect_opacity')))
+
+
+@studio.post('/create-videos')
+def create_videos():
+    data = request.get_json()
+    return jsonify(items=service.create_videos(data['channel_id'], data.get('count'), data.get('request_id'), data.get('duration_minutes'),
+                                              waveform_enabled=data.get('visualizer_enabled', data.get('waveform_enabled')), waveform_style=data.get('waveform_style'),
+                                              background_mode=data.get('background_mode', 'image'), lyrics_captions=data.get('lyrics_captions', False),
+                                              visual_effect=data.get('visual_effect'), visual_effect_opacity=data.get('visual_effect_opacity'))), 202
 
 
 @studio.post('/plan')
@@ -114,29 +134,7 @@ def metadata(job_id):
 
 @studio.post('/jobs/<job_id>/thumbnail')
 def thumbnail(job_id):
-    from app.studio.assets import make_thumbnail
-    row = service.job(job_id)
-    if row['generation_status'] not in ('completed', 'completed_with_fallback', 'uploaded'):
-        raise ValueError('Wait for generation to finish')
-    text = (request.get_json() or {}).get('text', '').strip()
-    if not text or len(text) > 60:
-        raise ValueError('Use a short thumbnail headline, up to 60 characters')
-    source = safe_asset(row['metadata'].get('generated_background_path', ''))
-    output = (service.root / job_id / 'thumbnail/studio_thumbnail.jpg').resolve()
-    output.parent.mkdir(parents=True, exist_ok=True)
-    channel = service.store.channel(row['channel_id'])
-    with publishing_lock(service.root):
-        make_thumbnail(source, output, text, channel)
-        queue = service.queue(row['channel_id'])
-        yt = next(r for r in queue.scan() if r['job_id'] == job_id)
-        revision = datetime.now(timezone.utc).isoformat()
-        yt.update(thumbnail_path=str(output), thumbnail_uploaded=False, thumbnail_revision=revision)
-        queue.save(yt)
-        meta = read_json(service.root / job_id / 'metadata.json', {})
-        meta.update(thumbnail_path=str(output), thumbnail_text=text, thumbnail_revision=revision)
-        write_json(service.root / job_id / 'metadata.json', meta)
-        (service.root / job_id / 'qc.json').unlink(missing_ok=True)
-    return jsonify(ok=True)
+    return jsonify(error='Job artwork is immutable. Thumbnails are assigned from the configured folder.'), 409
 
 
 @studio.post('/jobs/<job_id>/schedule')
@@ -189,7 +187,7 @@ def safe_asset(value):
     path = Path(value).resolve()
     if not any(path.is_relative_to(root.resolve()) for root in asset_roots()) or not path.is_file():
         raise ValueError('Media file not found')
-    if path.suffix.lower() not in ('.mp4', '.mp3', '.aac', '.m4a', '.flac', '.wav', '.png', '.jpg', '.jpeg', '.webp'):
+    if path.suffix.lower() not in ('.mp4', '.mp3', '.aac', '.m4a', '.flac', '.wav', '.png', '.jpg', '.jpeg', '.webp', '.srt', '.vtt'):
         raise ValueError('Unsupported media type')
     if any(part.startswith('.') for part in path.relative_to(Path.cwd()).parts):
         raise ValueError('Hidden files cannot be served')
@@ -199,13 +197,18 @@ def safe_asset(value):
 @studio.get('/jobs/<job_id>/asset/<kind>')
 def job_asset(job_id, kind):
     row = service.job(job_id)
-    key = {'video': 'video_path', 'thumbnail': 'thumbnail_path', 'background': 'generated_background_path'}.get(kind)
+    key = {'video': 'video_path', 'thumbnail': 'thumbnail_path', 'background': 'generated_background_path', 'waveform': 'waveform_preview_path',
+           'captions': 'lyrics_vtt_path'}.get(kind)
     if not key:
         raise ValueError('Unknown asset kind')
-    value = row['youtube'].get(key) or row['metadata'].get(key)
+    assigned = row['metadata'].get('assets', {}).get(kind, {})
+    value = assigned.get('path') or row['youtube'].get(key) or row['metadata'].get(key)
     if not value:
         raise ValueError('This job has no asset of this type')
-    return send_file(safe_asset(value), conditional=True)
+    response = send_file(safe_asset(value), conditional=True)
+    if kind == 'captions':
+        response.mimetype = 'text/vtt'
+    return response
 
 
 @studio.get('/media')
@@ -294,13 +297,14 @@ def cleanup_candidates():
         if job['generation_status'] not in ('completed', 'completed_with_fallback', 'uploaded') or not job['video_exists']:
             continue
         directory = (service.root / job['job_id']).resolve()
-        # Explicit disposable outputs only. Keep audio, source images, thumbnails and final MP4s.
-        for name in ('render_background.png', 'waveform.mkv'):
+          # Explicit disposable outputs only; permanent libraries and final assets stay intact.
+        from app.studio.artifacts import TEMP_FILES
+        for name in TEMP_FILES:
             raw_path = directory / name
             if raw_path.is_symlink():
                 continue
             path = raw_path.resolve()
-            if path.parent == directory and path.name == name and path.is_file():
+            if path.is_relative_to(directory) and path.is_file():
                 candidates.append({'path': str(path), 'bytes': path.stat().st_size})
     return candidates
 
@@ -342,6 +346,18 @@ def connect(channel_id):
     return redirect(url)
 
 
+@studio.post('/channels/<channel_id>/connect-browser')
+def connect_browser(channel_id):
+    """Open system-browser OAuth, so Google sign-in does not run in an embedded view."""
+    import webbrowser
+    service.store.channel(channel_id)
+    redirect_url = urlsplit(get_settings().youtube_redirect_uri)
+    if redirect_url.hostname not in ('localhost', '127.0.0.1', '::1'):
+        raise ValueError('Configure the local YouTube callback before connecting')
+    url = f'{redirect_url.scheme}://{redirect_url.netloc}/api/studio/channels/{channel_id}/connect'
+    return jsonify(opened=bool(webbrowser.open(url, new=2)), url=url)
+
+
 def complete_channel_callback(url):
     nonce = parse_qs(urlsplit(url).query).get('state', [''])[0]
     channel_id = service.store.read().get('oauth_channels', {}).get(nonce)
@@ -350,8 +366,43 @@ def complete_channel_callback(url):
     channel = service.store.channel(channel_id)
     result = YouTubeService(channel_settings(get_settings(), channel)).complete_authorization(url)
     if result.get('connected'):
+        if channel.get('youtube_channel_id') and channel['youtube_channel_id'] != result.get('channel_id'):
+            raise ValueError('That YouTube account does not match this channel. Reconnect and choose the correct account.')
         with service.store.transaction() as state:
             row = next(c for c in state['channels'] if c['id'] == channel_id)
             row.update(youtube_channel_id=result['channel_id'], youtube_account=result['channel_name'])
             state['oauth_channels'].pop(nonce, None)
     return result
+
+
+@studio.post('/media/import')
+def upload_media():
+    from app.studio.import_media import import_file
+    channel = service.store.channel(request.form.get('channel_id', ''))
+    kind = request.form.get('kind')
+    if kind not in ('music', 'image'):
+        raise ValueError('Choose music or image import')
+    uploads = request.files.getlist('files')
+    if not 1 <= len(uploads) <= 20:
+        raise ValueError('Select 1-20 media files')
+    folder = channel['music_dir' if kind == 'music' else 'background_dir']
+    results = []
+    for upload in uploads:
+        try:
+            results.append(import_file(upload, folder, kind))
+        except Exception as error:
+            results.append({'name': upload.filename, 'status': 'failed', 'error': str(error)})
+    return jsonify(files=results), 200 if any(r['status'] != 'failed' for r in results) else 400
+
+
+@studio.post('/deletion/preview')
+def preview_deletion():
+    from app.studio.artifacts import deletion_plan
+    return jsonify(deletion_plan(service, request.get_json().get('job_ids', [])))
+
+
+@studio.post('/deletion/confirm')
+def confirm_deletion():
+    from app.studio.artifacts import delete_generated
+    data = request.get_json()
+    return jsonify(delete_generated(service, data.get('job_ids', []), data.get('confirmation')))

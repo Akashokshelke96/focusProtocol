@@ -2,6 +2,7 @@
 Local background image provider for long-form jazz videos.
 Enhanced provider for selecting and preparing background images.
 """
+from app.utils.ffmpeg import no_window_flags
 import random
 import subprocess
 from pathlib import Path
@@ -80,6 +81,7 @@ class LocalBackgroundProvider:
             try:
                 from PIL import Image
                 with Image.open(str(file_path)) as img:
+                    img.load()
                     return img.width, img.height
             except ImportError:
                 pass
@@ -100,11 +102,11 @@ class LocalBackgroundProvider:
 
             # Fallback: assume 1920x1080 for valid image files
             logger.warning(f"Could not determine dimensions for {file_path.name}, assuming 1920x1080")
-            return 1920, 1080
+            return 0, 0
 
         except Exception as e:
             logger.error(f"Failed to get dimensions for {file_path.name}: {e}")
-            return 1920, 1080
+            return 0, 0
 
     def select_random_images(self, count: int = 3) -> List[Dict[str, Any]]:
         """Randomly select N background images.
@@ -172,7 +174,7 @@ class LocalBackgroundProvider:
                 str(output_path),
             ]
 
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30, **no_window_flags())
             if result.returncode != 0:
                 logger.error(f"FFmpeg image preparation failed: {result.stderr}")
                 return None

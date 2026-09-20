@@ -2,6 +2,7 @@
 Local music file provider for long-form jazz videos.
 Scans local music directory and provides file selection.
 """
+from app.utils.ffmpeg import no_window_flags
 import random
 import subprocess
 import json
@@ -47,10 +48,25 @@ class LocalMusicProvider:
             logger.warning(f"Music directory does not exist: {self.music_dir}")
             return files
 
+        from app.youtube.state import write_json, publishing_lock
+        cache_path = Path('jobs/music_duration_cache.json')
+        try:
+            cached = json.loads(cache_path.read_text(encoding='utf-8'))
+        except (OSError, ValueError):
+            cached = {}
+        updates = {}
         for file_path in self.music_dir.iterdir():
             if file_path.is_file() and file_path.suffix.lower() in self.SUPPORTED_FORMATS:
                 try:
-                    duration = self._get_audio_duration(file_path)
+                    stat = file_path.stat()
+                    key = str(file_path.resolve())
+                    stamp = [stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns]
+                    entry = cached.get(key, {})
+                    duration = entry.get('duration') if entry.get('stamp') == stamp else None
+                    if not isinstance(duration, (int, float)) or duration <= 0:
+                        duration = self._get_audio_duration(file_path)
+                        if duration > 0:
+                            updates[key] = dict(stamp=stamp, duration=duration)
                     if duration > 0:
                         files.append({
                             "path": str(file_path.absolute()),
@@ -61,6 +77,13 @@ class LocalMusicProvider:
                 except Exception as e:
                     logger.warning(f"Failed to inspect {file_path.name}: {e}")
 
+        if updates:
+            with publishing_lock(Path('jobs/music_duration_cache')):
+                try:
+                    latest = json.loads(cache_path.read_text(encoding='utf-8'))
+                except (OSError, ValueError):
+                    latest = {}
+                write_json(cache_path, {**latest, **updates})
         logger.info(f"Found {len(files)} valid music files in {self.music_dir}")
         return sorted(files, key=lambda x: x["filename"])
 
@@ -85,7 +108,7 @@ class LocalMusicProvider:
                         logger.info(f"WAV duration (wave module): {file_path.name} = {duration:.1f}s ({duration/60:.2f}m)")
                         return duration
                 except Exception as e:
-                    logger.error(f"WAV parsing failed: {e}. Will try FFprobe.")
+                    logger.debug(f"WAV parsing failed: {e}. Will try FFprobe.")
 
             # Method 2: Use FFprobe via subprocess (most reliable for all formats)
             try:
@@ -103,7 +126,7 @@ class LocalMusicProvider:
                             capture_output=True,
                             text=True,
                             timeout=10
-                        )
+                        , **no_window_flags())
                         if result.returncode == 0 and result.stdout.strip():
                             duration = float(result.stdout.strip())
                             logger.info(f"FFprobe duration: {file_path.name} = {duration:.1f}s ({duration/60:.2f}m)")
@@ -116,8 +139,7 @@ class LocalMusicProvider:
                 from pydub.utils import mediainfo
                 info = mediainfo(str(file_path))
                 if info and "duration" in info:
-                    duration_ms = int(float(info.get("duration", 0)))
-                    duration = duration_ms / 1000.0
+                    duration = float(info.get("duration", 0))
                     logger.info(f"Pydub duration: {file_path.name} = {duration:.1f}s ({duration/60:.2f}m)")
                     return duration
             except Exception as e:
@@ -275,7 +297,7 @@ class LocalMusicProvider:
 
             logger.info(f"Concatenating {len(track_paths)} tracks with {crossfade_duration}s crossfade")
             logger.debug(f"FFmpeg command: {' '.join(cmd)}")
-            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=600, **no_window_flags())
 
             if result.returncode != 0:
                 logger.error(f"FFmpeg concatenation error: {result.stderr}")
@@ -316,7 +338,7 @@ class LocalMusicProvider:
                 capture_output=True,
                 text=True,
                 timeout=5
-            )
+            , **no_window_flags())
             if result.returncode == 0:
                 ffmpeg_path = Path(result.stdout.strip().split('\n')[0])
                 if ffmpeg_path.exists():

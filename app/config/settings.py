@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic import Field, field_validator
+from pydantic import Field, field_validator, model_validator
 
 
 class Settings(BaseSettings):
@@ -31,23 +31,51 @@ class Settings(BaseSettings):
     studio_motion_mode: str = Field(default='static', pattern='^(static|drift)$', alias='STUDIO_MOTION_MODE')
     debug: bool = Field(default=False, alias="DEBUG")
 
+    channel_brand_name: str = Field(default="Camping With Blues", alias="CHANNEL_BRAND_NAME")
+    song_panel_enabled: bool = Field(default=False, alias="SONG_PANEL_ENABLED")
+    visual_effect: str = Field(default="old_film", pattern="^(none|old_film|vintage|warm_film|faded_film|noir|sepia|cool_cinematic|film_grain|soft_vignette)$", alias="VISUAL_EFFECT")
+    visual_effect_opacity: float = Field(default=.06, ge=0, le=.3, alias="VISUAL_EFFECT_OPACITY")
+    waveform_style: str = Field(default="linear", pattern="^(linear|circular)$", alias="WAVEFORM_STYLE")
+    waveform_visual_height_ratio: float = Field(default=.30, ge=.04, le=.3, alias="WAVEFORM_VISUAL_HEIGHT_RATIO")
+    waveform_scale: float = Field(default=2, ge=1, le=2, alias="WAVEFORM_SCALE")
+
     # Video Dimensions & Quality (Tier 2 Optimization)
+    quality_preset: str = Field(default='1080p', pattern='^(480p|720p|1080p)$', alias='QUALITY_PRESET')
     video_width: int = Field(default=1920, alias="VIDEO_WIDTH")
     video_height: int = Field(default=1080, alias="VIDEO_HEIGHT")
-    video_fps: int = Field(default=24, alias="VIDEO_FPS")
-    ffmpeg_preset: str = Field(default="faster", alias="FFMPEG_PRESET")
-    ffmpeg_crf: int = Field(default=25, alias="FFMPEG_CRF")
+    video_fps: int = Field(default=30, alias="VIDEO_FPS")
+    ffmpeg_preset: str = Field(default="ultrafast", alias="FFMPEG_PRESET")
+    video_encoder: str = Field(default='auto', pattern='^(auto|libx264|h264_nvenc|h264_amf|h264_qsv)$', alias='VIDEO_ENCODER')
+    video_encoder_quality: int = Field(default=18, ge=0, le=40, alias='VIDEO_ENCODER_QUALITY')
+    render_cpu_threads: int = Field(default=2, ge=1, le=16, alias='RENDER_CPU_THREADS')
+    render_max_concurrent: int = Field(default=1, ge=1, le=4, alias='RENDER_MAX_CONCURRENT')
+    render_cpu_high_percent: float = Field(default=90, ge=50, le=100, alias='RENDER_CPU_HIGH_PERCENT')
+    render_pressure_seconds: int = Field(default=30, ge=10, le=300, alias='RENDER_PRESSURE_SECONDS')
+    render_gpu_max_temperature: int = Field(default=85, ge=65, le=100, alias='RENDER_GPU_MAX_TEMPERATURE')
+    intro_fade_seconds: float = Field(default=2, ge=0, le=10, alias='INTRO_FADE_SECONDS')
+    outro_fade_seconds: float = Field(default=3, ge=0, le=10, alias='OUTRO_FADE_SECONDS')
+    audio_silence_removal_enabled: bool = Field(default=True, alias='AUDIO_SILENCE_REMOVAL_ENABLED')
+    audio_silence_threshold_db: float = Field(default=-52, le=-20, ge=-80, alias='AUDIO_SILENCE_THRESHOLD_DB')
+    audio_silence_min_seconds: float = Field(default=3, ge=1, le=20, alias='AUDIO_SILENCE_MIN_SECONDS')
+    audio_silence_keep_seconds: float = Field(default=0.25, ge=0, le=2, alias='AUDIO_SILENCE_KEEP_SECONDS')
+    render_timeout_multiplier: float = Field(default=4, ge=1, le=20, alias='RENDER_TIMEOUT_MULTIPLIER')
+    render_stall_timeout_seconds: int = Field(default=300, ge=30, alias='RENDER_STALL_TIMEOUT_SECONDS')
+    render_segment_seconds: int = Field(default=600, ge=60, le=1800, alias="RENDER_SEGMENT_SECONDS")
+    ffmpeg_crf: int = Field(default=20, alias="FFMPEG_CRF")
     ffmpeg_audio_bitrate: str = Field(default="320k", alias="FFMPEG_AUDIO_BITRATE")
     target_duration_minutes: int = Field(default=90, alias="TARGET_DURATION_MINUTES")
     waveform_enabled: bool = Field(default=True, alias="WAVEFORM_ENABLED")
+    waveform_animated: bool = Field(default=False, alias="WAVEFORM_ANIMATED")
     waveform_height_ratio: float = Field(default=0.03, gt=0, le=0.15, alias="WAVEFORM_HEIGHT_RATIO")
     waveform_width_ratio: float = Field(default=0.50, gt=0, le=1, alias="WAVEFORM_WIDTH_RATIO")
     waveform_vertical_position_ratio: float = Field(default=0.80, ge=0.1, le=0.9, alias="WAVEFORM_VERTICAL_POSITION_RATIO")
-    waveform_bar_width: int = Field(default=1, ge=1, le=3, alias="WAVEFORM_BAR_WIDTH")
-    waveform_opacity: float = Field(default=0.55, ge=0, le=1, alias="WAVEFORM_OPACITY")
+    waveform_bar_width: int = Field(default=3, ge=1, le=8, alias="WAVEFORM_BAR_WIDTH")
+    waveform_min_amplitude: float = Field(default=.06, ge=0, le=.2, alias='WAVEFORM_MIN_AMPLITUDE')
+    waveform_opacity: float = Field(default=0.90, ge=0, le=1, alias="WAVEFORM_OPACITY")
     waveform_filter_enabled: bool = Field(default=True, alias="WAVEFORM_FILTER_ENABLED")
     waveform_bottom_padding_ratio: float = Field(default=0.054, alias="WAVEFORM_BOTTOM_PADDING_RATIO")
-    waveform_color: str = Field(default="0xFFFFFF", alias="WAVEFORM_COLOR")
+    waveform_color: str = Field(default="0x000000", alias="WAVEFORM_COLOR")
+    lyrics_model: str = Field(default="base.en", alias="LYRICS_MODEL")
     astrofox_visualizer_enabled: bool = Field(default=False, alias="ASTROFOX_VISUALIZER_ENABLED")
     astrofox_visualizer_script: str = Field(default="render-astrofox.js", alias="ASTROFOX_VISUALIZER_SCRIPT")
     astrofox_glow_opacity: float = Field(default=0.22, alias="ASTROFOX_GLOW_OPACITY")
@@ -57,6 +85,16 @@ class Settings(BaseSettings):
     watermark_right_padding_ratio: float = Field(default=0.02, alias="WATERMARK_RIGHT_PADDING_RATIO")
     watermark_bottom_padding_ratio: float = Field(default=0.02, alias="WATERMARK_BOTTOM_PADDING_RATIO")
     watermark_opacity: float = Field(default=0.35, alias="WATERMARK_OPACITY")
+    visualizer_enabled: bool = Field(default=False, alias="VISUALIZER_ENABLED")
+    visualizer_loop_width_ratio: float = Field(default=0.21875, gt=0, le=0.5, alias="VISUALIZER_LOOP_WIDTH_RATIO")
+    visualizer_left_padding_ratio: float = Field(default=0.03125, ge=0, le=0.2, alias="VISUALIZER_LEFT_PADDING_RATIO")
+    visualizer_loop_bottom_padding_ratio: float = Field(default=0.055556, ge=0, le=0.2, alias="VISUALIZER_LOOP_BOTTOM_PADDING_RATIO")
+    visualizer_music_disk_path: str = Field(default="asset/music-disk.gif", alias="VISUALIZER_MUSIC_DISK_PATH")
+    visualizer_soundwave_path: str = Field(default="asset/soundwave.gif", alias="VISUALIZER_SOUNDWAVE_PATH")
+    visualizer_combined_width_ratio: float = Field(default=0.25, gt=0, le=0.5, alias="VISUALIZER_COMBINED_WIDTH_RATIO")
+    visualizer_bottom_padding_ratio: float = Field(default=0.02, ge=0, le=0.2, alias="VISUALIZER_BOTTOM_PADDING_RATIO")
+    visualizer_right_padding_ratio: float = Field(default=0.01, ge=0, le=0.1, alias="VISUALIZER_RIGHT_PADDING_RATIO")
+    visualizer_opacity: float = Field(default=1.0, ge=0, le=1, alias="VISUALIZER_OPACITY")
     subscribe_overlay_enabled: bool = Field(default=False, alias="SUBSCRIBE_OVERLAY_ENABLED")
     subscribe_animation_duration: float = Field(default=4, gt=0, le=15, alias="SUBSCRIBE_ANIMATION_DURATION")
     subscribe_crop_height_ratio: float = Field(default=1, gt=0, le=1, alias="SUBSCRIBE_CROP_HEIGHT_RATIO")
@@ -64,10 +102,12 @@ class Settings(BaseSettings):
     subscribe_crop_width_ratio: float = Field(default=1, gt=0, le=1, alias="SUBSCRIBE_CROP_WIDTH_RATIO")
     subscribe_crop_left_ratio: float = Field(default=0, ge=0, lt=1, alias="SUBSCRIBE_CROP_LEFT_RATIO")
     subscribe_white_key_enabled: bool = Field(default=False, alias="SUBSCRIBE_WHITE_KEY_ENABLED")
-    subscribe_overlay_interval_seconds: int = Field(default=300, ge=60, alias="SUBSCRIBE_OVERLAY_INTERVAL_SECONDS")
+    subscribe_overlay_interval_seconds: int = Field(default=480, ge=60, alias="SUBSCRIBE_OVERLAY_INTERVAL_SECONDS")
     subscribe_overlay_width_ratio: float = Field(default=0.30, gt=0, le=0.5, alias="SUBSCRIBE_OVERLAY_WIDTH_RATIO")
     subscribe_overlay_left_padding_ratio: float = Field(default=0.02, ge=0, le=0.2, alias="SUBSCRIBE_OVERLAY_LEFT_PADDING_RATIO")
     subscribe_overlay_bottom_padding_ratio: float = Field(default=0.02, ge=0, le=0.2, alias="SUBSCRIBE_OVERLAY_BOTTOM_PADDING_RATIO")
+
+    music_crossfade_seconds: float = Field(default=4, ge=3, le=5, alias="MUSIC_CROSSFADE_SECONDS")
 
     # Duration
     default_video_duration_minutes: int = Field(default=10, alias="DEFAULT_VIDEO_DURATION_MINUTES")
@@ -163,7 +203,7 @@ class Settings(BaseSettings):
     colab_image_bypass_password: str = Field(default="", alias="COLAB_IMAGE_BYPASS_PASSWORD")
     colab_image_api_key: str = Field(default="", alias="COLAB_IMAGE_API_KEY")
     colab_image_timeout_seconds: int = Field(default=180, alias="COLAB_IMAGE_TIMEOUT_SECONDS")
-    colab_image_enabled: bool = Field(default=True, alias="COLAB_IMAGE_ENABLED")
+    colab_image_enabled: bool = Field(default=False, alias="COLAB_IMAGE_ENABLED")
     
     pollination_image_enabled: bool = Field(default=False, alias="POLLINATION_IMAGE_ENABLED")
 
@@ -198,6 +238,28 @@ class Settings(BaseSettings):
         if value not in {"private", "unlisted", "public"}:
             raise ValueError("YOUTUBE_PRIVACY_STATUS must be private, unlisted, or public")
         return value
+
+    @model_validator(mode='after')
+    def apply_explicit_quality_preset(self):
+        # Old saved settings without a preset retain their exact dimensions/quality.
+        if 'quality_preset' in self.model_fields_set:
+            for key, value in self.quality_values(self.quality_preset).items():
+                object.__setattr__(self, key, value)
+        return self
+
+    @staticmethod
+    def quality_values(preset):
+        profiles = {'1080p': (1920, 1080, 23, 23, '192k'),
+                    '720p': (1280, 720, 23, 23, '160k'),
+                    '480p': (854, 480, 24, 24, '128k')}
+        if preset not in profiles:
+            raise ValueError('Choose 480p, 720p, or 1080p')
+        w, h, crf, cq, audio = profiles[preset]
+        return dict(video_width=w, video_height=h, ffmpeg_crf=crf,
+                    video_encoder_quality=cq, ffmpeg_audio_bitrate=audio, ffmpeg_preset='ultrafast')
+
+    def with_quality_preset(self, preset):
+        return self.model_copy(update=dict(quality_preset=preset, **self.quality_values(preset)))
 
     def validate_required_keys(self) -> list[str]:
         """Check which required API keys are missing."""

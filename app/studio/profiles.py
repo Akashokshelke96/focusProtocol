@@ -19,6 +19,7 @@ class ContentProfile(BaseModel):
 
 
 DEFAULT_PROFILES = [
+    ContentProfile(id='blues', name='Camping With Blues', niche='Slow Whiskey Blues', listening_intent='late-night relaxation, reading and reflection', genres=['slow blues', 'whiskey blues'], visual_prompt='Vintage monochrome blues lounge, soulful fictional guitarist on the right, antique microphone, smoky amber light, dark negative space on the left, original cinematic photograph, no text or logos', tags=['whiskey blues', 'slow blues', 'blues guitar', 'late night blues']),
     ContentProfile(id='jazz', name='Cinematic Jazz', niche='Instrumental Jazz', listening_intent='focus, reading and quiet evenings', genres=['smooth jazz', 'lounge'], visual_prompt='Warm cinematic lounge, amber lamps, elegant interiors, atmospheric night lighting', tags=['smooth jazz', 'instrumental jazz', 'focus music', 'relaxing jazz']),
     ContentProfile(id='dreamy', name='Dreamy Music', niche='Dreamy Music', listening_intent='unwinding and late-night listening', genres=['dream pop', 'ambient'], visual_prompt='Dreamlike pastel night sky, soft rose light, serene bedroom, cinematic composition', tags=['dreamy music', 'chill music', 'night playlist']),
     ContentProfile(id='bollywood', name='Bollywood', niche='Bollywood Music', listening_intent='relaxing and enjoying Indian melodies', genres=['Bollywood', 'Indian instrumental'], visual_prompt='Elegant Indian courtyard, warm lanterns, cinematic monsoon evening', tags=['Bollywood music', 'Indian melodies', 'Hindi music']),
@@ -26,28 +27,33 @@ DEFAULT_PROFILES = [
 ]
 
 THEMES = {
-    'cinematic': {'name': 'Cinematic Jazz', 'waveform_height_ratio': .03, 'waveform_width_ratio': .50, 'waveform_opacity': .65, 'waveform_color': '0xF4E7D1'},
-    'dreamy': {'name': 'Dreamy', 'waveform_height_ratio': .025, 'waveform_width_ratio': .42, 'waveform_opacity': .65, 'waveform_color': '0xF5D8EC'},
-    'minimal': {'name': 'Minimal', 'waveform_height_ratio': .02, 'waveform_width_ratio': .4, 'waveform_opacity': .6, 'waveform_color': '0xFFFFFF'},
-    'lounge': {'name': 'Dark Lounge', 'waveform_height_ratio': .025, 'waveform_width_ratio': .45, 'waveform_opacity': .7, 'waveform_color': '0xE8C990'},
+    'cinematic': {'name': 'Cinematic Jazz', 'waveform_height_ratio': .03, 'waveform_width_ratio': .50, 'waveform_opacity': .9, 'waveform_color': '0x000000'},
+    'dreamy': {'name': 'Dreamy', 'waveform_height_ratio': .025, 'waveform_width_ratio': .42, 'waveform_opacity': .9, 'waveform_color': '0x000000'},
+    'minimal': {'name': 'Minimal', 'waveform_height_ratio': .02, 'waveform_width_ratio': .4, 'waveform_opacity': .9, 'waveform_color': '0x000000'},
+    'lounge': {'name': 'Dark Lounge', 'waveform_height_ratio': .025, 'waveform_width_ratio': .45, 'waveform_opacity': .9, 'waveform_color': '0x000000'},
 }
 PRESETS = {
     'configured': {},
-    'preview': {'video_width': 1280, 'video_height': 720, 'video_fps': 15, 'ffmpeg_preset': 'ultrafast', 'ffmpeg_crf': 28},
-    'balanced': {'video_width': 1920, 'video_height': 1080, 'video_fps': 24, 'ffmpeg_preset': 'veryfast', 'ffmpeg_crf': 25},
+    'preview': {'video_width': 1920, 'video_height': 1080},
+    'balanced': {'video_width': 1920, 'video_height': 1080},
 }
 
 
 class Channel(BaseModel):
     id: str = Field(pattern=r'^[a-z0-9_-]{1,64}$')
     name: str = Field(min_length=1, max_length=80)
-    profile_id: str = 'jazz'
+    profile_id: str = 'blues'
     youtube_channel_id: str = ''
     youtube_account: str = ''
     timezone: str = 'Asia/Kolkata'
     videos_per_day: int = Field(default=2, ge=1, le=24)
     upload_times: list[str] = ['09:00', '18:00']
     theme: str = 'cinematic'
+    visualizer_enabled: bool = True
+    waveform_style: str = Field(default='linear', pattern='^(linear|circular)$')
+    song_panel_enabled: bool = False
+    visual_effect: str = Field(default='old_film', pattern='^(none|old_film|vintage|warm_film|faded_film|noir|sepia|cool_cinematic|film_grain|soft_vignette)$')
+    visual_effect_opacity: float = Field(default=.06, ge=0, le=.3)
     motion_mode: str = Field(default='static', pattern='^(static|drift)$')
     render_preset: str = 'configured'
     duration_minutes: int = Field(default=90, ge=1, le=180)

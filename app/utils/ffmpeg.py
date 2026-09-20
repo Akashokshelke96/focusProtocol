@@ -2,6 +2,10 @@
 FFmpeg utilities - Find and manage FFmpeg executable path
 """
 import subprocess
+import os
+import json
+from functools import lru_cache
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 from app.config.logging_config import get_logger
@@ -11,6 +15,27 @@ logger = get_logger("utils.ffmpeg")
 # Global FFmpeg path cache
 _ffmpeg_path = None
 _ffprobe_path = None
+
+
+def no_window_flags():
+    """Suppress child console windows without changing streams or commands."""
+    return {'creationflags': getattr(subprocess, 'CREATE_NO_WINDOW', 0)} if os.name == 'nt' else {}
+
+
+def probe_media(path, executable=None):
+    """Reuse successful probes only while the file identity and timestamps agree."""
+    path = Path(path).resolve()
+    stat = path.stat()
+    return deepcopy(_probe_cached(str(path), stat.st_size, stat.st_mtime_ns, stat.st_ctime_ns,
+                                  str(executable or find_ffprobe())))
+
+
+@lru_cache(maxsize=256)
+def _probe_cached(path, size, modified, created, executable):
+    result = subprocess.run([executable, '-v', 'error', '-show_streams', '-show_format',
+                             '-of', 'json', path], capture_output=True, text=True,
+                            check=True, timeout=60, **no_window_flags())
+    return json.loads(result.stdout)
 
 
 def find_ffmpeg() -> Optional[Path]:
@@ -53,7 +78,7 @@ def find_ffmpeg() -> Optional[Path]:
             capture_output=True,
             text=True,
             timeout=5
-        )
+        , **no_window_flags())
         if result.returncode == 0:
             ffmpeg_path = Path(result.stdout.strip().split('\n')[0])
             if ffmpeg_path.exists():
@@ -101,7 +126,7 @@ def find_ffprobe() -> Optional[Path]:
             capture_output=True,
             text=True,
             timeout=5,
-        )
+         **no_window_flags())
         if result.returncode == 0:
             candidate = Path(result.stdout.strip().split("\n")[0])
             if candidate.exists():
