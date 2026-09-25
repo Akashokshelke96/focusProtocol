@@ -137,7 +137,8 @@ def test_legacy_upload_route_keeps_clicked_video(monkeypatch):
     from app.studio.api import service
     enqueue = Mock(return_value={'id':'batch'})
     monkeypatch.setattr(service, 'enqueue_publish', enqueue)
-    monkeypatch.setattr('app.api.jazz_api._youtube_service', lambda: Mock(connection_status=lambda: {'connected': True}))
+    monkeypatch.setattr(service, 'job', lambda job_id: {'job_id': job_id, 'channel_id': 'focus-protocol'})
+    monkeypatch.setattr(service, 'queue', lambda channel_id: Mock(service=Mock(connection_status=lambda: {'connected': True})))
     response = app.test_client().post('/api/jazz/video/selected-video/upload', json={})
     assert response.status_code == 202
     enqueue.assert_called_once_with(['selected-video'])

@@ -41,7 +41,8 @@ def test_real_asset_and_cache(tmp_path, monkeypatch):
 
 def test_enabled_loop_preserves_background_and_audio(monkeypatch, tmp_path):
     from app.video.short_loop import render_loop
-    settings = Settings(_env_file=None, VISUALIZER_ENABLED=True)
+    settings = Settings(_env_file=None, VISUALIZER_ENABLED=True, STUDIO_MOTION_MODE='static',
+                        DUST_ENABLED=False, SUBSCRIBE_OVERLAY_ENABLED=False)
     def probe(path, ffprobe):
         if str(path) == 'audio':
             return {'streams': [{'codec_type': 'audio', 'codec_name': 'aac'}], 'format': {'duration': '1380'}}

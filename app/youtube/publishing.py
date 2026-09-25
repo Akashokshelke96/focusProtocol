@@ -92,8 +92,9 @@ def validate_video(path, metadata):
         if not thumbnail.is_file():
             raise ValueError(f'Thumbnail is missing: {thumbnail}')
         if thumbnail.stat().st_size > 2 * 1024 * 1024:
-            raise ValueError(f'Thumbnail {thumbnail.name} is {thumbnail.stat().st_size} bytes; YouTube accepts at most 2 MB. '
-                             'Add a smaller original to the thumbnail folder; the pipeline never resizes it.')
+            from app.studio.assets import ensure_uploadable_thumbnail
+            metadata['thumbnail_path'] = str(ensure_uploadable_thumbnail(thumbnail))
+            thumbnail = Path(metadata['thumbnail_path'])
         with Image.open(thumbnail) as image:
             image.verify()
     return duration
@@ -102,8 +103,17 @@ def validate_video(path, metadata):
 class PublishingQueue:
     def __init__(self, settings, root='jobs', service=None, channel_id=None):
         self.settings, self.root = settings, Path(root)
-        self.service = service or YouTubeService(settings)
+        self.service = service or YouTubeService(settings, channel_id=channel_id or 'focus-protocol')
         self.channel_id = channel_id
+        self.injected_service = service is not None
+
+    def for_channel(self, channel_id):
+        from app.studio.store import StudioStore
+        from app.studio.profiles import channel_settings
+        settings = self.settings
+        if channel_id != 'focus-protocol':
+            settings = channel_settings(settings, StudioStore(self.root / 'studio').channel(channel_id))
+        return PublishingQueue(settings, self.root, channel_id=channel_id)
 
     def scan(self):
         legacy = {}
@@ -122,8 +132,6 @@ class PublishingQueue:
                 data = json.loads(source.read_text(encoding='utf-8')) if source.exists() else {}
                 old_status, old_metadata = legacy.get(directory.name, ('', {}))
                 data = {**old_metadata, **data}
-                if self.channel_id and data.get('channel_id', 'focus-protocol') != self.channel_id:
-                    continue
                 if data.get('youtube_exclude'):
                     continue
                 status = data.get('generation_status') or old_status
@@ -141,9 +149,11 @@ class PublishingQueue:
                        'youtube_status': 'uploaded' if data.get('youtube_video_id') else 'pending',
                        'youtube_video_id': data.get('youtube_video_id'), 'retry_count': 0,
                        **state}
+                row['channel_id'] = data.get('channel_id', state.get('channel_id', 'focus-protocol'))
                 if data.get('assets'):
                     row['assets'] = data['assets']
-                    row['thumbnail_path'] = data['assets']['thumbnail']['path']
+                    from app.studio.assets import ensure_uploadable_thumbnail
+                    row['thumbnail_path'] = str(ensure_uploadable_thumbnail(data['assets']['thumbnail']['path']))
                 if self.channel_id and row['channel_id'] != self.channel_id:
                     continue
                 # Repair old jazz jobs affected by the metadata f-string bug.
@@ -177,7 +187,8 @@ class PublishingQueue:
             for row in rows:
                 if not row.get('youtube_video_id'):
                     continue
-                video = self.service.video_details(row['youtube_video_id'])
+                service = self.service if self.injected_service else self.for_channel(row['channel_id']).service
+                video = service.video_details(row['youtube_video_id'])
                 if observe(row, video) and row.get('publishing_verified_at'):
                     status = video.get('status', {})
                     row['youtube_status'] = 'scheduled' if status.get('publishAt') else ('published' if status.get('privacyStatus') == 'public' else status.get('privacyStatus', 'processing_complete'))
@@ -188,7 +199,7 @@ class PublishingQueue:
         path = Path(video).resolve()
         digest = file_hash(path)
         row = {'job_id': 'manual_' + digest, 'generation_status': 'completed', 'video_path': str(path),
-               'youtube_status': 'pending', 'retry_count': 0, 'sha256': digest, **metadata}
+               'youtube_status': 'pending', 'retry_count': 0, 'sha256': digest, 'channel_id': self.channel_id or 'focus-protocol', **metadata}
         with publishing_lock(self.root):
             for previous in self.scan():
                 if previous.get('sha256') == digest or Path(previous['video_path']).resolve() == path:
@@ -198,12 +209,33 @@ class PublishingQueue:
         return row['job_id']
 
     def publish(self, dry_run=False, job_id=None, wait=True):
+        if self.channel_id and self.channel_id != 'focus-protocol' and not self.injected_service:
+            resolved = self.for_channel(self.channel_id)
+            self.settings, self.service = resolved.settings, resolved.service
+        if not self.channel_id and not self.injected_service:
+            rows = [r for r in self.scan() if not job_id or r['job_id'] == job_id]
+            if job_id and not rows:
+                raise ValueError('Unknown publishing job ID')
+            results = []
+            for channel_id in dict.fromkeys(r['channel_id'] for r in rows):
+                results.extend(self.for_channel(channel_id).publish(dry_run=dry_run, job_id=job_id, wait=wait))
+            return results
+        from app.config.logging_config import get_logger
+        get_logger('youtube.publishing').info('Publish action channel=%s job=%s dry_run=%s', self.channel_id or 'focus-protocol', job_id or 'batch', dry_run)
         if not dry_run and not self.settings.youtube_upload_enabled:
             raise RuntimeError('Set YOUTUBE_UPLOAD_ENABLED=true to enable publishing')
         with publishing_lock(self.root):
             rows = self.scan()
             if job_id and not any(row['job_id'] == job_id for row in rows):
                 raise ValueError('Unknown publishing job ID')
+            if not dry_run and self.channel_id and not self.injected_service:
+                from app.studio.store import StudioStore
+                channel = StudioStore(self.root / 'studio').channel(self.channel_id)
+                connection = self.service.connection_status()
+                if not connection.get('connected'):
+                    raise ValueError(channel['name'] + ' is not connected — click Connect YouTube')
+                if channel.get('youtube_channel_id') and connection.get('channel_id') != channel['youtube_channel_id']:
+                    raise ValueError('Connected account does not match ' + channel['name'])
             remote = [] if dry_run else self.service.channel_videos()
             reserved = [r.get('scheduled_publish_time') for r in rows
                         if r.get('scheduled_publish_time')]

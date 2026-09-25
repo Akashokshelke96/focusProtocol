@@ -16,6 +16,9 @@ class ContentProfile(BaseModel):
     description_pattern: str = '{concept}. {minutes} minutes of {niche} for {intent}.\n\nSubscribe to {channel} for more sessions.'
     tags: list[str] = []
     category: str = '10'
+    preferred_keywords: list[str] = Field(default_factory=list, max_length=20)
+    editorial_voice: str = 'Atmospheric, specific, mature and natural; clear search intent without keyword stuffing'
+    avoid_phrases: list[str] = Field(default_factory=list, max_length=30)
 
 
 DEFAULT_PROFILES = [
@@ -54,16 +57,22 @@ class Channel(BaseModel):
     song_panel_enabled: bool = False
     visual_effect: str = Field(default='old_film', pattern='^(none|old_film|vintage|warm_film|faded_film|noir|sepia|cool_cinematic|film_grain|soft_vignette)$')
     visual_effect_opacity: float = Field(default=.06, ge=0, le=.3)
-    motion_mode: str = Field(default='static', pattern='^(static|drift)$')
+    motion_mode: str = Field(default='drift', pattern='^(static|drift)$')
     render_preset: str = 'configured'
     duration_minutes: int = Field(default=90, ge=1, le=180)
     music_dir: str = 'music'
     background_dir: str = 'backgroundImages'
     thumbnail_dir: str = 'thumbnail'
+    watermark_path: str = 'watermark'
+    output_dir: str = 'jobs'
+    ui_palette: str = Field(default='forest', pattern='^(forest|midnight|plum|ember)$')
     thumbnail_style: str = 'branded'
     thumbnail_color: str = '#E8C990'
     watermark_enabled: bool = True
-    subscribe_enabled: bool = False
+    subscribe_enabled: bool = False  # Preserve old channel defaults.
+    subscribe_overlay_interval_seconds: int = Field(default=180, ge=1)
+    subscribe_overlay_width_ratio: float = Field(default=.17, gt=0, le=.5)
+    subscribe_overlay_file: str = ''
     auto_generate: bool = False
     auto_publish: bool = False
     daily_target: int = Field(default=2, ge=1, le=20)
@@ -85,7 +94,7 @@ class Channel(BaseModel):
             raise ValueError('Upload times must be distinct')
         return sorted(values)
 
-    @field_validator('music_dir', 'background_dir', 'thumbnail_dir')
+    @field_validator('music_dir', 'background_dir', 'thumbnail_dir', 'watermark_path', 'output_dir')
     @classmethod
     def local_folder(cls, value):
         root = Path.cwd().resolve()
@@ -103,6 +112,13 @@ def channel_settings(settings, channel):
     result.youtube_auto_schedule_enabled = True
     if channel['id'] != 'focus-protocol':
         result.youtube_token_file = str(Path('jobs/studio/credentials') / channel['id'] / 'token.json')
+        result.youtube_client_id = ''
+        result.youtube_client_secret = ''
+        result.youtube_client_secrets_file = str(Path('jobs/studio/credentials') / channel['id'] / 'client_secrets.json')
+    else:
+        credentials = Path('jobs/studio/credentials/focus-protocol/client_secrets.json')
+        if credentials.is_file():
+            result.youtube_client_secrets_file = str(credentials)
     return result
 
 

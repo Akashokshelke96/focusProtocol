@@ -54,6 +54,9 @@ def _video_path(job_id):
 
 
 def _youtube_service():
+    if request.args.get('channel'):
+        from app.studio.api import service, channel_oauth
+        return channel_oauth(service.store.channel(request.args['channel']))
     return YouTubeService(get_settings())
 
 
@@ -109,15 +112,23 @@ def start_generation():
             settings.visualizer_enabled = data['waveform_enabled']
         settings.waveform_enabled = False
         from app.config.settings import Settings
-        overrides = {key.upper(): data[key] for key in ('quality_preset', 'visual_effect', 'visual_effect_opacity') if key in data}
+        overrides = {key.upper(): data[key] for key in ('quality_preset', 'visual_effect', 'visual_effect_opacity', 'subscribe_overlay_interval_seconds', 'subscribe_overlay_width_ratio', 'subscribe_overlay_file') if key in data}
         try:
             settings = Settings.model_validate({**settings.model_dump(by_alias=True), **overrides})
         except ValueError:
-            return jsonify(message='Choose 480p, 720p, or 1080p and a valid video filter/intensity'), 400
+            return jsonify(message='Choose a valid quality preset, video filter/intensity, and subscribe interval/size'), 400
         context = {}
+        if data.get('channel_id') or data.get('image_motion'):
+            channel = studio_service.store.channel(data.get('channel_id', 'focus-protocol'))
+            profile = next(p for p in studio_service.store.read()['profiles'] if p['id'] == channel['profile_id'])
+            context = dict(channel=channel, profile=profile, content_id='', concept=data.get('concept', channel['name']))
+            settings.channel_brand_name = channel['name']
         music_dir = data.get('music_dir')
-        if music_dir:
+        if music_dir and not context:
             context['channel'] = {'music_dir': music_dir}
+        if data.get('image_motion') is not None:
+            from app.video.image_motion import configuration
+            context['image_motion'] = configuration(data['image_motion'])
         orchestrator = LongFormJazzOrchestrator(settings, context=context)
         active_orchestrator = orchestrator
 
@@ -125,6 +136,7 @@ def start_generation():
         started_at = datetime.now().astimezone()
         current_job = {
             "job_id": job_id,
+            "channel_id": data.get('channel_id', 'focus-protocol'),
             "status": "running",
             "video_count": video_count,
             "test_mode": test_mode,
@@ -282,6 +294,8 @@ def list_jobs():
                     pass
 
             # Add video path
+            if request.args.get('channel') and job_dict.get('metadata', {}).get('channel_id', 'focus-protocol') != request.args['channel']:
+                continue
             video_path = _video_path(job.id)
             if video_path.exists():
                 job_dict["video_path"] = str(video_path)
@@ -313,14 +327,18 @@ def component_status():
     """Return lightweight component readiness without exposing credentials."""
     settings = get_settings()
     background_prompts = Path("app/pipeline/backgroundImagesPrompts.json")
-    thumbnail_dir = Path("thumbnail")
+    channel = {}
+    if request.args.get('channel'):
+        from app.studio.api import service
+        channel = service.store.channel(request.args['channel'])
+    thumbnail_dir = Path(channel.get('thumbnail_dir', 'thumbnail'))
     local_thumbnail_count = sum(
         1 for path in thumbnail_dir.glob("*")
         if path.is_file() and path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
     ) if thumbnail_dir.exists() else 0
     from app.providers.media_history import validate_background
     backgrounds = []
-    for folder in (Path('backgroundImages'),):
+    for folder in (Path(channel.get('background_dir', 'backgroundImages')),):
         for path in folder.glob('*'):
             if path.is_file() and path.suffix.lower() in {'.png', '.jpg', '.jpeg', '.webp'}:
                 try:
@@ -343,10 +361,13 @@ def component_status():
 def youtube_connect():
     """Start the server-side Google OAuth flow."""
     try:
+        if request.args.get('channel'):
+            from app.studio.api import connect
+            return connect(request.args['channel'])
         return redirect(_youtube_service().authorization_url())
     except Exception as error:
-        logger.error("YouTube OAuth start failed: %s", error, exc_info=True)
-        return jsonify({"status": "error", "message": str(error)}), 400
+        logger.error("YouTube OAuth start failed (%s)", type(error).__name__)
+        return jsonify({"status": "error", "message": "Could not start YouTube connection; check the selected channel’s OAuth configuration"}), 400
 
 
 @app.route('/api/jazz/youtube/callback', methods=['GET'])
@@ -360,15 +381,19 @@ def youtube_callback():
         status = complete_channel_callback(request.url) or _youtube_service().complete_authorization(request.url)
         if not status.get("connected"):
             raise RuntimeError(status.get("error", "No YouTube channel found"))
-        return redirect("/?youtube=connected")
-    except Exception as error:
-        logger.error("YouTube OAuth callback failed: %s", error, exc_info=True)
         from urllib.parse import urlencode
-        return redirect("/?" + urlencode({"youtube_error": str(error)}))
+        return redirect('/?' + urlencode(dict(youtube='connected', channel=status.get('selected_channel', 'focus-protocol'))))
+    except Exception as error:
+        logger.error("YouTube OAuth callback failed (%s)", type(error).__name__)
+        from urllib.parse import urlencode
+        return redirect("/?" + urlencode({"youtube_error": "YouTube connection failed. Start Connect YouTube again and choose the correct account."}))
 
 
 @app.route('/api/jazz/youtube/status', methods=['GET'])
 def youtube_status():
+    if request.args.get('channel'):
+        from app.studio.api import connection
+        return connection(request.args['channel'])
     return jsonify({"status": "success", **_youtube_service().connection_status()})
 
 
@@ -376,7 +401,7 @@ def youtube_status():
 def youtube_queue():
     from app.youtube.publishing import PublishingQueue
     try:
-        return jsonify({'jobs': PublishingQueue(get_settings()).scan(), 'operation': publishing_task})
+        return jsonify({'jobs': PublishingQueue(get_settings(), channel_id=request.args.get('channel')).scan(), 'operation': publishing_task})
     except Exception as error:
         return jsonify({'status': 'error', 'message': str(error)}), 400
 
@@ -387,14 +412,17 @@ def upload_video(job_id=None):
     """Preserve legacy action URLs while using channel-aware durable batches."""
     from app.studio.api import service
     try:
-        if not _youtube_service().connection_status().get("connected"):
+        channel_id = request.args.get('channel') or (service.job(job_id)['channel_id'] if job_id else 'focus-protocol')
+        if job_id and service.job(job_id)['channel_id'] != channel_id:
+            raise ValueError('This video belongs to another channel')
+        if not service.queue(channel_id).service.connection_status().get("connected"):
             return jsonify({
                 'status': 'unauthorized', 
-                'message': 'Connect to YouTube first',
-                'auth_url': '/api/jazz/youtube/connect'
+                'message': service.store.channel(channel_id)['name'] + ' is not connected — click Connect YouTube',
+                'auth_url': '/api/jazz/youtube/connect?channel=' + channel_id
             }), 401
             
-        ids = [job_id] if job_id else [r['job_id'] for r in service.jobs() if r['stage'] == 'ready_to_publish']
+        ids = [job_id] if job_id else [r['job_id'] for r in service.jobs() if r['stage'] == 'ready_to_publish' and r['channel_id'] == channel_id]
         batch = service.enqueue_publish(ids)
         return jsonify({'status': 'accepted', 'message': 'Publishing batch queued', 'batch': batch}), 202
     except (ValueError, RuntimeError) as error:
@@ -527,7 +555,9 @@ def index():
 
 @app.route('/legacy')
 def legacy_dashboard():
-    return render_template('jazz_dashboard.html', settings=get_settings())
+    from app.video.subscribe_overlay import files
+    settings = get_settings()
+    return render_template('jazz_dashboard.html', settings=settings, subscribe_files=[p.name for p in files(settings)])
 
 
 @app.route('/jobs', methods=['GET'])

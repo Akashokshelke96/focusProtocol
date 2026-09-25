@@ -42,7 +42,10 @@ def import_too_large(error):
 
 @studio.get('/state')
 def state():
-    return jsonify(service.snapshot())
+    from app.video.subscribe_overlay import files
+    snapshot = service.snapshot()
+    snapshot['subscribe_files'] = [p.name for p in files(get_settings())]
+    return jsonify(snapshot)
 
 
 @studio.post('/channels')
@@ -66,7 +69,7 @@ def add_content():
     return jsonify(items=service.add_content(data['channel_id'], data['titles'], data.get('duration_minutes'), data.get('planned', False),
                                             waveform_style=data.get('waveform_style'), waveform_enabled=data.get('visualizer_enabled', data.get('waveform_enabled')),
                                             background_mode=data.get('background_mode', 'image'), lyrics_captions=data.get('lyrics_captions', False),
-                                              visual_effect=data.get('visual_effect'), visual_effect_opacity=data.get('visual_effect_opacity')))
+                                              visual_effect=data.get('visual_effect'), visual_effect_opacity=data.get('visual_effect_opacity'), image_motion=data.get('image_motion')))
 
 
 @studio.post('/create-videos')
@@ -75,7 +78,7 @@ def create_videos():
     return jsonify(items=service.create_videos(data['channel_id'], data.get('count'), data.get('request_id'), data.get('duration_minutes'),
                                               waveform_enabled=data.get('visualizer_enabled', data.get('waveform_enabled')), waveform_style=data.get('waveform_style'),
                                               background_mode=data.get('background_mode', 'image'), lyrics_captions=data.get('lyrics_captions', False),
-                                              visual_effect=data.get('visual_effect'), visual_effect_opacity=data.get('visual_effect_opacity'))), 202
+                                              visual_effect=data.get('visual_effect'), visual_effect_opacity=data.get('visual_effect_opacity'), image_motion=data.get('image_motion'))), 202
 
 
 @studio.post('/plan')
@@ -332,14 +335,20 @@ def connection(channel_id):
         with service.store.transaction() as state:
             row = next(c for c in state['channels'] if c['id'] == channel_id)
             row.update(youtube_channel_id=result['channel_id'], youtube_account=result['channel_name'])
+    result['selected_channel'] = channel_id
+    result['youtube_account'] = result.get('channel_name') if result.get('connected') else None
+    result['video_count'] = sum(j['channel_id'] == channel_id for j in service.jobs())
     return jsonify(result)
 
 
 @studio.get('/channels/<channel_id>/connect')
 def connect(channel_id):
     channel = service.store.channel(channel_id)
-    youtube = YouTubeService(channel_settings(get_settings(), channel))
-    url = youtube.authorization_url()
+    youtube = channel_oauth(channel)
+    try:
+        url = youtube.authorization_url()
+    except Exception:
+        raise ValueError('Could not start YouTube connection; check this channel’s OAuth client configuration') from None
     nonce = parse_qs(urlsplit(url).query)['state'][0]
     with service.store.transaction() as state:
         state.setdefault('oauth_channels', {})[nonce] = channel_id
@@ -360,19 +369,33 @@ def connect_browser(channel_id):
 
 def complete_channel_callback(url):
     nonce = parse_qs(urlsplit(url).query).get('state', [''])[0]
-    channel_id = service.store.read().get('oauth_channels', {}).get(nonce)
+    import time
+    attempts = read_json(Path(get_settings().youtube_token_file).with_name('youtube_oauth_state.json'), {}).get('attempts', [])
+    saved = next((a for a in attempts if a.get('state') == nonce and time.time() - a.get('created', 0) <= 600), {})
+    channel_id = saved.get('channel_id') or service.store.read().get('oauth_channels', {}).get(nonce)
     if not channel_id:
         return None
     channel = service.store.channel(channel_id)
-    result = YouTubeService(channel_settings(get_settings(), channel)).complete_authorization(url)
+    youtube = channel_oauth(channel)
+    if not saved:  # Pending connections started by an older server.
+        youtube.state_path = youtube.token_path.with_name('youtube_oauth_state.json')
+    result = youtube.complete_authorization(url)
     if result.get('connected'):
         if channel.get('youtube_channel_id') and channel['youtube_channel_id'] != result.get('channel_id'):
             raise ValueError('That YouTube account does not match this channel. Reconnect and choose the correct account.')
         with service.store.transaction() as state:
             row = next(c for c in state['channels'] if c['id'] == channel_id)
             row.update(youtube_channel_id=result['channel_id'], youtube_account=result['channel_name'])
-            state['oauth_channels'].pop(nonce, None)
+            state.get('oauth_channels', {}).pop(nonce, None)
+    result['selected_channel'] = channel_id
     return result
+
+
+def channel_oauth(channel):
+    settings = get_settings()
+    return YouTubeService(channel_settings(settings, channel), channel_id=channel['id'],
+                          state_path=Path(settings.youtube_token_file).with_name('youtube_oauth_state.json'),
+                          expected_channel_id=channel.get('youtube_channel_id'))
 
 
 @studio.post('/media/import')

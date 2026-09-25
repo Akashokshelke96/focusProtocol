@@ -20,6 +20,54 @@ def asset_sha256(path):
         return digest.hexdigest()
 
 
+YOUTUBE_THUMBNAIL_LIMIT_BYTES = 2 * 1024 * 1024
+
+
+def ensure_uploadable_thumbnail(path):
+    """Return a thumbnail path guaranteed within YouTube's 2 MB limit.
+
+    The original file is never modified (immutable assets rule). If it
+    already fits, it is returned unchanged. Otherwise a compressed
+    ``<stem>_upload.jpg`` sibling is created: RGB, fitted within
+    1280x720 without upscaling, JPEG quality ladder 92/85/78/70, with a
+    960x540 fallback. Raises only if even that cannot fit.
+    """
+    from PIL import Image, ImageOps
+    path = Path(path)
+    if path.is_file() and path.stat().st_size <= YOUTUBE_THUMBNAIL_LIMIT_BYTES:
+        return path
+    sibling = path.with_name(path.stem + '_upload.jpg')
+    if sibling.is_file() and sibling.stat().st_size <= YOUTUBE_THUMBNAIL_LIMIT_BYTES:
+        return sibling
+    with Image.open(path) as original:
+        image = ImageOps.exif_transpose(original).convert('RGB')
+    if image.width > 1280 or image.height > 720:
+        image.thumbnail((1280, 720), Image.Resampling.LANCZOS)
+    import io
+    for quality in (92, 85, 78, 70):
+        content = io.BytesIO()
+        image.save(content, format='JPEG', quality=quality, optimize=True)
+        if len(content.getvalue()) <= YOUTUBE_THUMBNAIL_LIMIT_BYTES:
+            break
+    else:
+        small = image.copy()
+        small.thumbnail((960, 540), Image.Resampling.LANCZOS)
+        content = io.BytesIO()
+        small.save(content, format='JPEG', quality=70, optimize=True)
+        if len(content.getvalue()) > YOUTUBE_THUMBNAIL_LIMIT_BYTES:
+            raise ValueError(f'Thumbnail {path.name} cannot be compressed within YouTube 2 MB limit')
+    import os, tempfile
+    sibling.parent.mkdir(parents=True, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(dir=sibling.parent, suffix='.tmp')
+    try:
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(content.getvalue())
+        os.replace(temporary, sibling)
+    finally:
+        Path(temporary).unlink(missing_ok=True)
+    return sibling
+
+
 def copy_thumbnail(source, output):
     """Atomically copy immutable artwork, preserving every byte."""
     import os, shutil, tempfile
@@ -92,9 +140,19 @@ def make_thumbnail(source, output, title, channel):
     content = io.BytesIO()
     fmt = 'PNG' if output.suffix.lower() == '.png' else 'JPEG'
     image.save(content, format=fmt, optimize=True, **({'quality': 95} if fmt == 'JPEG' else {}))
-    if len(content.getvalue()) > 2 * 1024 * 1024 and fmt == 'PNG':
+    if len(content.getvalue()) > YOUTUBE_THUMBNAIL_LIMIT_BYTES and fmt == 'PNG':
         content = io.BytesIO()
         image.quantize(colors=256).save(content, format='PNG', optimize=True)
+    if len(content.getvalue()) > YOUTUBE_THUMBNAIL_LIMIT_BYTES:
+        # Photographic PNGs can exceed 2 MB even quantized; JPEG ladder
+        # always fits 1280x720 with negligible visible loss.
+        for quality in (92, 85, 78, 70):
+            content = io.BytesIO()
+            image.save(content, format='JPEG', quality=quality, optimize=True)
+            if len(content.getvalue()) <= YOUTUBE_THUMBNAIL_LIMIT_BYTES:
+                break
+        if output.suffix.lower() != '.jpg':
+            output = output.with_suffix('.jpg')
     fd, temporary = tempfile.mkstemp(dir=output.parent, suffix='.tmp')
     try:
         with os.fdopen(fd, 'wb') as stream:
@@ -102,6 +160,7 @@ def make_thumbnail(source, output, title, channel):
         os.replace(temporary, output)
     finally:
         Path(temporary).unlink(missing_ok=True)
+    return output
 
 
 def qc_job(directory, row, metadata):

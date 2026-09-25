@@ -1,0 +1,28 @@
+{
+  "success": true,
+  "job_ids": [
+    "20260921_235721_320461_video_001"
+  ],
+  "legacy_token_unchanged": true,
+  "streams": [
+    {
+      "codec_type": "video",
+      "codec_name": "h264",
+      "width": 854,
+      "height": 480,
+      "r_frame_rate": "15/1",
+      "duration": "60.000000"
+    },
+    {
+      "codec_type": "audio",
+      "codec_name": "aac",
+      "width": null,
+      "height": null,
+      "r_frame_rate": "0/0",
+      "duration": "60.000000"
+    }
+  ],
+  "metadata": "jobs\\20260921_235721_320461_video_001\\metadata.json",
+  "commands": "jobs\\20260921_235721_320461_video_001\\output\\render_commands.json",
+  "qc_status": "pass"
+}

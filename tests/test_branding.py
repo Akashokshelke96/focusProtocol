@@ -10,16 +10,16 @@ from app.pipeline.long_form_jazz_orchestrator import LongFormJazzOrchestrator
 
 def test_session_names_repeat_rejected_and_chapters_honest(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
-    llm = Mock()
-    llm._extract_json.return_value = {'titles': [f'Quiet Memory {i}' for i in range(12)]}
+    from tests.test_editorial_metadata import package, provider
+    llm = provider(package(), {}, {}, {})
     a = session_metadata(llm, 'one', 90)
     b = session_metadata(llm, 'two', 90)
     assert a['session_title_source'] == 'llm'
     assert b['session_title_source'] == 'local_fallback'
     assert not set(a['session_titles']) & set(b['session_titles'])
-    assert a['session_chapters'][0]['start_seconds'] == 0
-    assert a['session_chapters'][-1]['start_seconds'] == 4950
-    assert 'not source song titles' in a['youtube_description']
+    # Unknown audio boundaries must never turn into evenly divided fake chapters.
+    assert a['session_chapters'] == b['session_chapters'] == []
+    assert '00:00' not in a['youtube_description']
 
 
 def test_background_rotation_prefers_primary_and_skips_corrupt(tmp_path, monkeypatch):

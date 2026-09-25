@@ -57,48 +57,22 @@ def font(size, script=False, bold=False):
     return ImageFont.truetype('DejaVuSerif.ttf', max(8, round(size)))
 
 
-def session_metadata(llm, job_id, minutes, concept=''):
-    """Names are editorial chapters, never invented source-track attribution."""
+def session_metadata(llm, job_id, minutes, concept='', profile=None, channel=None):
+    """One editorial package; track chapters are inserted only from actual audio timing."""
     import json
+    from app.studio.content import create_plan
+    from app.studio.editorial import recent_content
+    from app.studio.profiles import DEFAULT_PROFILES
+    profile = profile or next(p.model_dump() for p in DEFAULT_PROFILES if p.id == 'blues')
+    channel = channel or {'id': 'focus-protocol', 'name': CHANNEL}
     state_path = Path('jobs/branding_titles.json')
     with publishing_lock(Path('jobs/branding_titles')):
         used = json.loads(state_path.read_text('utf-8')) if state_path.exists() else []
-        source, error = 'llm', None
-        try:
-            response = llm._generate_with_retry(
-                f'Create exactly 12 original short evocative blues session titles for {CHANNEL}. '
-                f'Concept: {concept}. Unique session: {job_id}. Use 2-5 words per title, at most 32 characters. '
-                'Themes: midnight bourbon, lost love, rain, last calls, soulful guitar. '
-                'Return only JSON {"titles": [strings]}. Do not copy artists or existing songs. '
-                f'Avoid these previously used titles: {used[-240:]}', max_retries=1)
-            titles = llm._extract_json(response)['titles']
-            if len(titles) != 12 or any(not isinstance(t, str) or not 3 <= len(t) <= 32 or '\n' in t for t in titles):
-                raise ValueError('Expected 12 short single-line titles')
-            if len({t.casefold() for t in titles}) != 12 or {t.casefold() for t in titles} & {t.casefold() for t in used}:
-                raise ValueError('Repeated session names')
-        except Exception as exc:
-            source, error = 'local_fallback', str(exc)
-            choices = [f'{a} {b}' for a in ['Velvet', 'Bourbon', 'Midnight', 'Faded', 'Amber', 'Rainy', 'Lonesome', 'Smoky', 'Broken', 'Silver', 'Last', 'Quiet', 'Forgotten', 'Blue', 'Autumn', 'Neon', 'Empty', 'Tender', 'Distant', 'Restless'] for b in ['Confession', 'Goodbye', 'Memories', 'Promises', 'Window', 'Embers', 'Letters', 'Heart', 'Road', 'Reverie', 'Whispers', 'Rain', 'Moon', 'Lullaby', 'Shadows', 'Dreams', 'Prayer', 'Echoes', 'Waltz', 'Hour']]
-            choices = [t for t in choices if t.casefold() not in {u.casefold() for u in used}]
-            if len(choices) < 12:
-                raise ValueError('Session name library exhausted; restore the LLM connection') from exc
-            titles = random.SystemRandom().sample(choices, 12)
-        write_json(state_path, used + titles)
-    chapters = [{'start_seconds': round(i * minutes * 60 / 12), 'title': t} for i, t in enumerate(titles)]
-    def timestamp(seconds):
-        return f'{seconds//3600:02}:{seconds%3600//60:02}:{seconds%60:02}'
-    description = (f'{titles[0]} — {minutes:g} minutes of late-night blues.\n\n'
-        f'Welcome to {CHANNEL}. Dim the lights and settle into warm guitar tones, smoky lounge atmosphere and a little room to breathe. '
-        'A slow soundtrack for quiet evenings, reading, reflection and winding down after a long day.\n\n'
-        'SESSION CHAPTERS\n' + '\n'.join(f"{timestamp(c['start_seconds'])} {c['title']}" for c in chapters) +
-        '\n\nThese are original editorial chapter names for a continuous mix; music may repeat at most twice per source track. They are not source song titles.\n\n'
-        'PERFECT FOR\n• Late-night relaxation\n• Rainy evenings and quiet reflection\n• Reading and background listening\n\n'
-        f'ABOUT {CHANNEL.upper()}\nA home for slow blues, warm late-night moods and unhurried listening. '
-        'If this session belongs in your evening, like the video, subscribe and share it with someone who loves the blues.\n\n'
-        '#CampingWithBlues #SlowBlues #WhiskeyBlues #LateNightBlues #BluesMusic')
-    return dict(session_titles=titles, session_chapters=chapters, session_title_source=source, session_title_error=error,
-                youtube_title=f'{titles[0]} | Midnight Whiskey Blues & Slow Guitar'[:100], youtube_description=description,
-                youtube_tags=['Camping With Blues', 'whiskey blues', 'slow blues', 'late night blues', 'blues guitar', 'relaxing blues', 'blues mix'], thumbnail_text=titles[0])
+        history = recent_content(channel_id=channel['id'])
+        history += [dict(session_titles=used[-240:])]
+        plan = create_plan(llm, profile, channel, minutes, history, concept=concept)
+        write_json(state_path, used + plan['session_titles'])
+    return dict(**plan['metadata'], content_plan=plan)
 
 
 def brand_image(path, settings, metadata):

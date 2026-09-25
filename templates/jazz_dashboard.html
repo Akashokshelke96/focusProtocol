@@ -443,7 +443,7 @@
             100% { transform: rotate(360deg); }
         }
     </style>
-</head>
+<link rel="stylesheet" href="/static/channel-ui.css"></head>
 <body>
     <header>
         <div class="header-content">
@@ -456,6 +456,7 @@
     </header>
 
     <div class="container">
+        <section class="channel-bar"><label for="active-channel">Channel</label><select id="active-channel" onchange="switchChannel()"></select><button onclick="ChannelUI.onboard(async c=>{activeChannel=c.id;await loadChannels();})">Add channel</button><p id="channel-status">Loading channels…</p></section>
         <!-- Generation Control Panel -->
         <div class="panel">
             <h2>Generate New Video</h2>
@@ -502,7 +503,10 @@
                 <label>Video filter <select id="video-filter">{% for key, label in [('none','Original'),('vintage','Vintage Film'),('old_film','Old Cinema'),('warm_film','Warm Film'),('faded_film','Faded Film'),('noir','Noir'),('sepia','Sepia'),('film_grain','Soft Grain'),('cool_cinematic','Cool Cinematic'),('soft_vignette','Soft Vignette')] %}<option value="{{ key }}" {% if settings.visual_effect == key %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></label>
                 <label>Intensity <select id="filter-intensity"><option value="0.06">Subtle</option><option value="0.12">Medium</option><option value="0.20">Strong</option></select></label>
                 <label><input type="checkbox" id="watermark-enabled" {% if settings.watermark_enabled %}checked{% endif %}> Enable watermark</label>
-                <label><input type="checkbox" id="subscribe-overlay-enabled" {% if settings.subscribe_overlay_enabled %}checked{% endif %}> Show subscribe popup every 8 minutes</label>
+                <label>Subscribe interval (seconds) <input id="subscribe-interval" type="number" min="1" value="{{ settings.subscribe_overlay_interval_seconds }}"></label>
+                <label>Subscribe width (% of video) <input id="subscribe-size" type="number" min="1" max="50" value="{{ settings.subscribe_overlay_width_ratio * 100 }}"></label>
+                <label>Subscribe WebM <select id="subscribe-file"><option value="">Automatic</option>{% for name in subscribe_files %}<option value="{{ name }}">{{ name }}</option>{% endfor %}</select></label>
+                <label><input type="checkbox" id="subscribe-overlay-enabled" {% if settings.subscribe_overlay_enabled %}checked{% endif %}> Subscribe animation (bottom right, muted)</label>
             </div>
 
             <div class="button-group">
@@ -518,6 +522,7 @@
             </div>
 
             <!-- Progress Section -->
+            <div id="image-motion-controls" style="margin-top:16px"></div>
             <div id="progress-section" style="display: none; margin-top: 30px;">
                 <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 15px;">
                     <span class="spinner"></span>
@@ -542,7 +547,7 @@
                 <h2>Component Status</h2>
                 <div id="component-status" class="job-info">Checking components...</div>
                 <div class="button-group" style="margin-top: 20px;">
-                    <button onclick="window.location.href='/api/jazz/youtube/connect'">Connect YouTube</button>
+                    <button onclick="window.location.href=channelURL('/api/jazz/youtube/connect')">Connect YouTube</button>
                     <button onclick="publishPendingVideos()">Publish pending videos</button>
                     <button onclick="showPublishingQueue()">Publishing status</button>
                     <pre id="publishing-status" style="white-space:pre-wrap"></pre>
@@ -599,14 +604,25 @@
         <p>Jazz Video Generator • YouTube Automation Engine v2.0 • Powered by Gemini AI</p>
     </footer>
 
+    <script src="/static/channel-ui.js"></script>
     <script>
+
+function imageMotionFields(){return `<fieldset class="full" style="border:1px solid var(--line);padding:12px;border-radius:6px"><legend>Image Motion</legend><label><input type="checkbox" name="image_motion_enabled" onchange="this.closest('fieldset').querySelector('[data-motion-options]').hidden=!this.checked"> Enable gentle image motion</label><div data-motion-options hidden><p class="sub">Still images only. A seamless 30-second cycle is encoded once; the visualizer stays fixed. Very slow uses 60 seconds and takes longer to encode.</p><label>Motion type<select aria-label="Motion type" name="image_motion_preset"><option value="gentle_float">Gentle Float</option><option value="slow_sway">Slow Sway</option><option value="slow_drift">Slow Drift</option><option value="gentle_zoom">Gentle Zoom</option><option value="float_zoom">Float + Zoom</option><option value="cinematic">Cinematic</option><option value="random_gentle">Random Gentle</option><option value="static">Static</option></select></label><label>Strength<select aria-label="Strength" name="image_motion_strength"><option value="low">Low</option><option value="medium">Medium</option></select></label><label>Speed<select aria-label="Speed" name="image_motion_speed"><option value="slow">Slow · 30-second cycle</option><option value="very_slow">Very slow · 60-second cycle</option></select></label><label><input type="checkbox" name="image_motion_rotation"> Add tiny rotation</label><label><input type="checkbox" name="image_motion_zoom"> Add scale breathing</label><label><input type="checkbox" name="image_motion_randomize" checked> Vary motion per video (saved seed)</label></div></fieldset>`;}
+function readImageMotion(root){const find=name=>root.querySelector('[name="image_motion_'+name+'"]');return {enabled:!!find('enabled')?.checked,preset:find('preset')?.value||'gentle_float',strength:find('strength')?.value||'low',speed:find('speed')?.value||'slow',rotation:!!find('rotation')?.checked,zoom:!!find('zoom')?.checked,randomize:!!find('randomize')?.checked};}
+
         const API_BASE = '/api/jazz';
+        let activeChannel = new URLSearchParams(location.search).get('channel') || localStorage.getItem('studio-channel') || 'focus-protocol';
+        let channels = [];
+        function channelURL(url){return url+(url.includes('?')?'&':'?')+'channel='+encodeURIComponent(activeChannel);}
+        async function loadChannels(){const response=await fetch('/api/studio/state');const data=await response.json();channels=data.channels;const select=document.getElementById('active-channel');select.replaceChildren(...channels.map(c=>new Option(c.name,c.id)));if(!channels.some(c=>c.id===activeChannel))activeChannel='focus-protocol';select.value=activeChannel;switchChannel();}
+        async function switchChannel(){clearInterval(statusInterval);document.getElementById('preview-panel').style.display='none';document.getElementById('progress-section').style.display='none';document.getElementById('btn-cancel').disabled=true;currentJob=null;activeChannel=document.getElementById('active-channel').value;localStorage.setItem('studio-channel',activeChannel);const channel=channels.find(c=>c.id===activeChannel);ChannelUI.apply(channel);document.getElementById('music-dir').value=channel.music_dir;document.getElementById('music-dir').readOnly=true;document.getElementById('watermark-enabled').checked=channel.watermark_enabled;document.getElementById('duration-minutes').value=channel.duration_minutes;checkStatus();const id=activeChannel;document.getElementById('channel-status').textContent=channel.name+' · checking YouTube…';loadJobs();showPublishingQueue();loadComponents();try{const response=await fetch(channelURL(API_BASE+'/youtube/status'));const result=await response.json();if(activeChannel===id)document.getElementById('channel-status').textContent=channel.name+' · '+(result.connected?result.channel_name:'Not connected')+' · '+result.video_count+' videos';}catch(e){if(activeChannel===id)document.getElementById('channel-status').textContent='Connection check failed';}}
         let currentJob = null;
         let statusInterval = null;
 
         // Initialize
         document.addEventListener('DOMContentLoaded', function() {
-            loadJobs();
+            document.getElementById('image-motion-controls').innerHTML=imageMotionFields();
+            loadChannels();
             checkStatus();
             loadLogs();
             loadComponents();
@@ -625,6 +641,8 @@
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({
+                        image_motion: readImageMotion(document),
+                        channel_id: activeChannel,
                         video_count: videoCount,
                         test_mode: testMode,
                         duration_minutes: durationMinutes,
@@ -634,6 +652,9 @@
                         visual_effect_opacity: Number(document.getElementById('filter-intensity').value),
                         watermark_enabled: document.getElementById('watermark-enabled').checked,
                         subscribe_overlay_enabled: document.getElementById('subscribe-overlay-enabled').checked,
+                        subscribe_overlay_interval_seconds: Number(document.getElementById('subscribe-interval').value),
+                        subscribe_overlay_width_ratio: Number(document.getElementById('subscribe-size').value)/100,
+                        subscribe_overlay_file: document.getElementById('subscribe-file').value,
                         music_dir: document.getElementById('music-dir').value.trim() || null
                     })
                 });
@@ -659,7 +680,7 @@
                 const response = await fetch(`${API_BASE}/status`);
                 const data = await response.json();
 
-                if (data.job && data.job.status === 'running') {
+                if (data.job && (data.job.channel_id || 'focus-protocol') === activeChannel && data.job.status === 'running') {
                     currentJob = data.job;
                     showProgress();
                     startStatusPolling();
@@ -677,7 +698,7 @@
                     const response = await fetch(`${API_BASE}/status`);
                     const data = await response.json();
 
-                    if (data.job) {
+                    if (data.job && (data.job.channel_id || 'focus-protocol') === activeChannel) {
                         currentJob = data.job;
                         updateProgress(data.job);
 
@@ -762,9 +783,11 @@
         }
 
         async function loadJobs() {
+            const requestedChannel = activeChannel;
             try {
-                const response = await fetch(`${API_BASE}/jobs?limit=10`);
+                const response = await fetch(channelURL(`${API_BASE}/jobs?limit=10`));
                 const data = await response.json();
+                if (requestedChannel !== activeChannel) return;
 
                 const jobsList = document.getElementById('jobs-list');
                 if (data.jobs && data.jobs.length > 0) {
@@ -838,9 +861,11 @@
         }
 
         async function showPublishingQueue() {
+            const requestedChannel = activeChannel;
             try {
-                const response = await fetch(`${API_BASE}/youtube/queue`);
+                const response = await fetch(channelURL(`${API_BASE}/youtube/queue`));
                 const data = await response.json();
+                if (requestedChannel !== activeChannel) return;
                 if (!response.ok) throw new Error(data.message);
                 document.getElementById('publishing-status').textContent = (data.operation?.message || '') + '\n' + data.jobs.map(j =>
                     `${j.job_id}: ${j.youtube_status}\n${j.scheduled_publish_time || ''} ${j.last_error || ''}`
@@ -850,7 +875,7 @@
         }
         async function publishPendingVideos() {
             try {
-                const response = await fetch(`${API_BASE}/youtube/publish`, {method: 'POST'});
+                const response = await fetch(channelURL(`${API_BASE}/youtube/publish`), {method: 'POST'});
                 const data = await response.json();
                 if (response.status === 401 && data.auth_url) {
                     window.location.href = data.auth_url;
@@ -869,7 +894,7 @@
             }
             const jobId = currentJob.job_id || currentJob.id;
             try {
-                const response = await fetch(`${API_BASE}/video/${jobId}/upload`, { method: 'POST' });
+                const response = await fetch(channelURL(`${API_BASE}/video/${jobId}/upload`), { method: 'POST' });
                 const data = await response.json();
                 if (response.status === 401 && data.auth_url) {
                     window.location.href = data.auth_url;
@@ -903,9 +928,11 @@
         }
 
         async function loadComponents() {
+            const requestedChannel = activeChannel;
             try {
-                const response = await fetch(`${API_BASE}/components`);
+                const response = await fetch(channelURL(`${API_BASE}/components`));
                 const data = await response.json();
+                if (requestedChannel !== activeChannel) return;
                 document.getElementById('component-status').innerHTML = Object.entries(data.components || {}).map(([name, value]) => {
                     const connected = value.connected === true || value.status === 'healthy';
                     const marker = connected ? '✓' : '✗';
@@ -940,7 +967,7 @@
             try {
                 const response = await fetch(`${API_BASE}/jobs/${jobId}`);
                 const data = await response.json();
-                if (data.job) {
+                if (data.job && (data.job.channel_id || 'focus-protocol') === activeChannel) {
                     showVideoPreview(data.job);
                 }
             } catch (error) {
@@ -956,7 +983,7 @@
             try {
                 const response = await fetch(`${API_BASE}/jobs/${jobId}`);
                 const data = await response.json();
-                if (data.job) {
+                if (data.job && (data.job.channel_id || 'focus-protocol') === activeChannel) {
                     showVideoPreview(data.job);
                 }
             } catch (error) {

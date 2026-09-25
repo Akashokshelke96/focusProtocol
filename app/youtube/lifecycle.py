@@ -47,7 +47,8 @@ def finish(service, settings, row, save, wait=True):
             from app.studio.assets import verify_job_assets
             verify_job_assets(row)
             if row.get('assets'):
-                row['thumbnail_path'] = row['assets']['thumbnail']['path']
+                from app.studio.assets import ensure_uploadable_thumbnail
+                row['thumbnail_path'] = str(ensure_uploadable_thumbnail(row['assets']['thumbnail']['path']))
             service.upload_thumbnail(row['youtube_video_id'], row['thumbnail_path'])
             row.update(thumbnail_uploaded=True, youtube_status='thumbnail_uploaded')
             save(row)

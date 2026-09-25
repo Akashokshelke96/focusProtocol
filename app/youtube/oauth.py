@@ -19,10 +19,13 @@ SCOPES = ["https://www.googleapis.com/auth/youtube.upload", "https://www.googlea
 class YouTubeService:
     """Own OAuth tokens and YouTube API calls; never expose credentials to the UI."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: Settings, channel_id=None, state_path=None, expected_channel_id=None):
         self.settings = settings
         self.token_path = Path(settings.youtube_token_file)
-        self.state_path = self.token_path.with_name('youtube_oauth_state.json')
+        self.state_path = Path(state_path) if state_path else self.token_path.with_name('youtube_oauth_state.json')
+        self.channel_id = channel_id or 'focus-protocol'
+        self.scoped_oauth = channel_id is not None
+        self.expected_channel_id = expected_channel_id
 
     def _client_config(self) -> dict[str, Any]:
         config_path = Path(self.settings.youtube_client_secrets_file)
@@ -48,6 +51,11 @@ class YouTubeService:
         }}
 
     def authorization_url(self) -> str:
+        from app.youtube.state import publishing_lock
+        with publishing_lock(self.state_path.parent / 'oauth_lock'):
+            return self._authorization_url()
+
+    def _authorization_url(self) -> str:
         from google_auth_oauthlib.flow import Flow
 
         flow = Flow.from_client_config(self._client_config(), scopes=SCOPES)
@@ -56,11 +64,19 @@ class YouTubeService:
         state_file = json.loads(self.state_path.read_text()) if self.state_path.exists() else {}
         attempts = state_file.get('attempts') or ([state_file] if state_file.get('state') else [])
         attempts = [item for item in attempts if time.time() - item.get('created', 0) <= 600]
-        attempts.append({'state': state, 'created': time.time(), 'verifier': flow.code_verifier})
+        attempt = {'state': state, 'created': time.time(), 'verifier': flow.code_verifier}
+        if self.scoped_oauth:
+            attempt['channel_id'] = self.channel_id
+        attempts.append(attempt)
         write_json(self.state_path, {'attempts': attempts[-5:]})
         return url
 
     def complete_authorization(self, authorization_response: str) -> dict[str, Any]:
+        from app.youtube.state import publishing_lock
+        with publishing_lock(self.state_path.parent / 'oauth_lock'):
+            return self._complete_authorization(authorization_response)
+
+    def _complete_authorization(self, authorization_response: str) -> dict[str, Any]:
         from google_auth_oauthlib.flow import Flow
 
         parsed = urlsplit(authorization_response)
@@ -76,12 +92,19 @@ class YouTubeService:
         saved = next((item for item in attempts if time.time() - item.get('created', 0) <= 600 and secrets.compare_digest(returned_state, item.get('state', 'missing'))), None)
         if not saved:
             raise ValueError('OAuth state is invalid or expired. Start Connect YouTube again.')
+        if saved.get('channel_id', 'focus-protocol') != self.channel_id:
+            raise ValueError('OAuth state belongs to a different channel')
         if not query.get('code'):
             raise ValueError('Google did not return an authorization code')
         flow = Flow.from_client_config(self._client_config(), scopes=SCOPES, state=saved['state'], code_verifier=saved.get('verifier'))
         flow.redirect_uri = self.settings.youtube_redirect_uri
         # Validate the loopback callback ourselves, then exchange over Google's HTTPS endpoint.
         flow.fetch_token(code=query['code'][0])
+        if self.expected_channel_id:
+            from googleapiclient.discovery import build
+            remote = build('youtube', 'v3', credentials=flow.credentials, cache_discovery=False).channels().list(part='snippet', mine=True).execute()
+            if not any(item['id'] == self.expected_channel_id for item in remote.get('items', [])):
+                raise ValueError('That Google account does not match this channel; the previous token was preserved')
         self.token_path.parent.mkdir(parents=True, exist_ok=True)
         write_json(self.token_path, json.loads(flow.credentials.to_json()))
         remaining = [item for item in attempts if item != saved and time.time() - item.get('created', 0) <= 600]
@@ -89,7 +112,7 @@ class YouTubeService:
             write_json(self.state_path, {'attempts': remaining})
         else:
             self.state_path.unlink(missing_ok=True)
-        logger.info("YouTube OAuth completed; token stored server-side")
+        logger.info("YouTube OAuth completed for channel %s; token stored server-side", self.channel_id)
         return self.connection_status()
 
     def _credentials(self):
@@ -116,8 +139,8 @@ class YouTubeService:
             return {"connected": bool(items), "channel_name": name, "channel_id": items[0]['id'] if items else None,
                     'can_edit_published': any(credentials.has_scopes([scope]) for scope in ('https://www.googleapis.com/auth/youtube', 'https://www.googleapis.com/auth/youtube.force-ssl'))}
         except Exception as error:
-            logger.error("YouTube connection check failed: %s", error, exc_info=True)
-            return {"connected": False, "channel_name": None, "error": str(error)}
+            logger.error("YouTube connection check failed for channel %s (%s)", self.channel_id, type(error).__name__)
+            return {"connected": False, "channel_name": None, "error": "YouTube connection check failed. Reconnect this channel or try again."}
 
     def upload(
         self,

@@ -93,6 +93,12 @@ class StudioService:
         return row
 
     def save_channel(self, data):
+        data = dict(data)
+        client_id = data.pop('oauth_client_id', '').strip()
+        client_secret = data.pop('oauth_client_secret', '').strip()
+        if bool(client_id) != bool(client_secret):
+            raise ValueError('Provide both OAuth client ID and client secret')
+        creating = data.pop('create_only', False)
         channel = Channel.model_validate(data).model_dump()
         if len(channel['upload_times']) != channel['videos_per_day']:
             raise ValueError('Provide one preferred time per daily video')
@@ -106,14 +112,25 @@ class StudioService:
             if not any(p['id'] == channel['profile_id'] for p in state['profiles']):
                 raise ValueError('Unknown content profile')
             old = next((c for c in state['channels'] if c['id'] == channel['id']), None)
+            if creating and old:
+                raise ValueError('This channel ID already exists; choose a different ID')
             # A verified account binding cannot be silently changed in a form.
             if old and old.get('youtube_channel_id') and channel['youtube_channel_id'] != old['youtube_channel_id']:
                 raise ValueError('Reconnect YouTube to change its channel binding')
+            for key in ('music_dir', 'background_dir', 'thumbnail_dir', 'output_dir'):
+                Path(channel[key]).mkdir(parents=True, exist_ok=True)
+            watermark = Path(channel['watermark_path'])
+            (watermark.parent if watermark.suffix.lower() == '.png' else watermark).mkdir(parents=True, exist_ok=True)
+            if client_id:
+                from app.studio.channel_credentials import save_client
+                save_client(channel['id'], client_id, client_secret, get_settings().youtube_redirect_uri)
             state['channels'] = [c for c in state['channels'] if c['id'] != channel['id']] + [channel]
         return channel
 
     def add_content(self, channel_id, titles, duration=None, planned=False, waveform_style=None, waveform_enabled=None,
-                      background_mode='image', lyrics_captions=False, visual_effect=None, visual_effect_opacity=None):
+                      background_mode='image', lyrics_captions=False, visual_effect=None, visual_effect_opacity=None, image_motion=None):
+        from app.video.image_motion import ImageMotion, configuration
+        ImageMotion.model_validate(image_motion or {})
         channel = self.store.channel(channel_id)
         if waveform_enabled is None:
             waveform_enabled = channel.get('visualizer_enabled', True)
@@ -144,7 +161,7 @@ class StudioService:
                 row = dict(id=uuid.uuid4().hex, channel_id=channel_id, title=title, duration_minutes=duration,
                            stage='planned' if planned else 'ideas', created_at=now(), job_id=None, attempts=0,
                            waveform_style=waveform_style, waveform_enabled=waveform_enabled, visualizer_enabled=waveform_enabled,
-                           background_mode=background_mode, lyrics_captions=lyrics_captions,
+                           background_mode=background_mode, lyrics_captions=lyrics_captions, image_motion=configuration(image_motion),
                            visual_effect=chosen_filter.visual_effect, visual_effect_opacity=chosen_filter.visual_effect_opacity)
                 state['content'].append(row); created.append(row)
             if planned:
@@ -152,11 +169,13 @@ class StudioService:
         return created
 
     def create_videos(self, channel_id, count, request_id, duration=None, waveform_enabled=None, waveform_style=None,
-                      background_mode='image', lyrics_captions=False, visual_effect=None, visual_effect_opacity=None):
+                      background_mode='image', lyrics_captions=False, visual_effect=None, visual_effect_opacity=None, image_motion=None):
         if type(count) is not int or not 1 <= count <= 100:
             raise ValueError('Choose 1–100 videos')
         if not isinstance(request_id, str) or not 8 <= len(request_id) <= 100:
             raise ValueError('A request ID is required to prevent duplicate batches')
+        from app.video.image_motion import ImageMotion, configuration
+        ImageMotion.model_validate(image_motion or {})
         channel = self.store.channel(channel_id)
         if waveform_enabled is None:
             waveform_enabled = channel.get('visualizer_enabled', True)
@@ -191,7 +210,7 @@ class StudioService:
                            title=f'Preparing video {index+1}', automatic=True, duration_minutes=minutes,
                            stage='planned', created_at=now(), attempts=0,
                            waveform_style=waveform_style, waveform_enabled=waveform_enabled, visualizer_enabled=waveform_enabled,
-                           background_mode=background_mode, lyrics_captions=lyrics_captions,
+                           background_mode=background_mode, lyrics_captions=lyrics_captions, image_motion=configuration(image_motion),
                            visual_effect=chosen_filter.visual_effect, visual_effect_opacity=chosen_filter.visual_effect_opacity)
                 state['content'].append(row)
                 created.append(row)
@@ -450,6 +469,9 @@ class StudioService:
                         setattr(settings, key, value)
                 settings.watermark_enabled = channel['watermark_enabled']
                 settings.subscribe_overlay_enabled = channel['subscribe_enabled']
+                for key in ('subscribe_overlay_interval_seconds', 'subscribe_overlay_width_ratio', 'subscribe_overlay_file'):
+                    if key in channel:
+                        setattr(settings, key, channel[key])
                 settings.waveform_enabled = False
                 settings.visualizer_enabled = item.get('visualizer_enabled', item.get('waveform_enabled', channel.get('visualizer_enabled', True)))
                 settings.waveform_style = item.get('waveform_style', channel.get('waveform_style', 'linear'))
@@ -457,20 +479,26 @@ class StudioService:
                 settings.song_panel_enabled = channel.get('song_panel_enabled', False)
                 settings.visual_effect = item.get('visual_effect', channel.get('visual_effect', 'old_film'))
                 settings.visual_effect_opacity = item.get('visual_effect_opacity', channel.get('visual_effect_opacity', .06))
-                settings.studio_motion_mode = channel.get('motion_mode', 'static')
+                settings.studio_motion_mode = channel.get('motion_mode', 'drift')
                 profile = item.get('profile_snapshot') or next(p for p in state['profiles'] if p['id'] == channel['profile_id'])
                 plan = item.get('content_plan')
-                if item.get('automatic') and not plan:
+                if not plan and not (self.root / job_id / 'job.json').exists():
                     from app.studio.content import create_plan
                     from app.llm.gemini import GeminiProvider
-                    history = [c['title'] for c in state['content'] if c['channel_id'] == channel['id'] and c['id'] != item['id'] and not c['title'].startswith('Preparing video ')]
-                    history += [j['title'] for j in self.jobs() if j['channel_id'] == channel['id']]
-                    plan = create_plan(GeminiProvider(settings), profile, channel, item['duration_minutes'], history)
+                    from app.studio.editorial import recent_content
+                    history = [c.get('content_plan') or {'concept': c['title'], 'title': c['title']}
+                               for c in state['content'] if c['channel_id'] == channel['id'] and c['id'] != item['id']
+                               and not c['title'].startswith('Preparing video ')]
+                    history += recent_content(self.root, channel['id'])
+                    if item.get('automatic'):
+                        plan = create_plan(GeminiProvider(settings), profile, channel, item['duration_minutes'], history)
+                    else:
+                        plan = create_plan(GeminiProvider(settings), profile, channel, item['duration_minutes'], history, concept=item['title'])
                     item = dict(item, title=plan['concept'], content_plan=plan)
                     with self.store.transaction() as latest:
                         next(c for c in latest['content'] if c['id'] == item['id']).update(title=item['title'], content_plan=plan)
                 context = dict(channel=channel, profile=profile, content_id=item['id'], concept=item['title'], job_id=job_id, content_plan=plan,
-                               background_mode=item.get('background_mode', 'image'), lyrics_captions=item.get('lyrics_captions', False))
+                               background_mode=item.get('background_mode', 'image'), lyrics_captions=item.get('lyrics_captions', False), image_motion=item.get('image_motion'))
                 engine = LongFormJazzOrchestrator(settings, context=context)
                 if (self.root / job_id / 'job.json').exists():
                     success = engine.resume(job_id)

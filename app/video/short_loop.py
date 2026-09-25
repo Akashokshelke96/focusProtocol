@@ -13,7 +13,7 @@ def probe(path, ffprobe):
     return probe_media(path, ffprobe)
 
 
-def short_command(backend, settings, background, is_video, branding, output, seconds, vis=None):
+def short_command(backend, settings, background, is_video, branding, output, seconds, vis=None, motion=None, dust=None):
     """Encode the short clip once with branding + soundwave baked in.
 
     Loop/mux stay pure stream-copy; no GIFs, fades, or full-duration
@@ -26,6 +26,8 @@ def short_command(backend, settings, background, is_video, branding, output, sec
     cmd += ['-i', str(background), '-loop', '1', '-framerate', str(fps), '-i', str(branding)]
     if vis is not None:
         cmd += ['-stream_loop', '-1', '-i', str(vis['path'])]
+    if dust is not None:
+        cmd += ['-stream_loop', '-1', '-i', str(dust['path'])]
     fit = f'scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h},setsar=1,fps={fps}'
     if is_video:
         # A bounded forward/reverse cycle joins identical end frames at both seams.
@@ -34,6 +36,9 @@ def short_command(backend, settings, background, is_video, branding, output, sec
         base = (f'[0:v]{fit},trim=end_frame={half},setpts=PTS-STARTPTS,split[f][r];'
                 '[r]reverse,setpts=PTS-STARTPTS[back];'
                 '[f][back]concat=n=2:v=1:a=0[base]')
+    elif motion and motion.get('enabled') and motion.get('preset') != 'static':
+        from app.video.image_motion import transform_filter
+        base = f'[0:v]{fit},{transform_filter(motion, fps)}[base]'
     elif settings.studio_motion_mode == 'drift':
         margin = max(2, round(w * .018))
         base = (f'[0:v]scale={w+margin}:{h+margin}:force_original_aspect_ratio=increase,'
@@ -49,6 +54,13 @@ def short_command(backend, settings, background, is_video, branding, output, sec
         base += f';[base]{grade[1:]}[graded]'
     background_label = 'graded' if grade else 'base'
     graph = base + f';[{background_label}][1:v]overlay=0:0:format=yuv420[branded]'
+    overlay_base = 'branded'
+    if dust is not None:
+        dust_index = 3 if vis is not None else 2
+        graph += (f';[{dust_index}:v]setpts=PTS-STARTPTS,fps={fps},scale={w}:{h},format=rgba,'
+                  f"colorchannelmixer=aa={dust['opacity']},format=yuva420p[dust];"
+                  '[branded][dust]overlay=0:0:format=yuv420[dusted]')
+        overlay_base = 'dusted'
     if vis is not None:
         # Soundwave baked into the short clip only (bottom-left). The 6s
         # animation loops seamlessly inside the 60s clip, so the later
@@ -56,10 +68,10 @@ def short_command(backend, settings, background, is_video, branding, output, sec
         graph += (f";[2:v]setpts=PTS-STARTPTS,format=rgba,"
                   f"scale={vis['width']}:{vis['height']},"
                   f"colorchannelmixer=aa={vis['opacity']}[soundwave];"
-                  f"[branded][soundwave]overlay=x={vis['x']}:y=H-h-{vis['bottom']}:"
+                  f"[{overlay_base}][soundwave]overlay=x={vis['x']}:y=H-h-{vis['bottom']}:"
                   f"format=auto,fps={fps},setpts=N/({fps}*TB)[out]")
     else:
-        graph += f';[branded]fps={fps},setpts=N/({fps}*TB)[out]'
+        graph += f';[{overlay_base}]fps={fps},setpts=N/({fps}*TB)[out]'
     cmd += ['-filter_complex', graph, '-map', '[out]', '-an', '-r', str(fps), '-frames:v', str(frames)]
     return cmd
 
@@ -88,9 +100,23 @@ def render_loop(settings, directory, metadata, background, is_video, audio, bran
         raise ValueError('Complete target-length audio is required before encoding video')
     # Static artwork plus a six-second visualizer needs only one six-second
     # encode. Preserve the established 60s motion cycle for moving backgrounds.
-    subscribe = settings.subscribe_overlay_enabled
+    from app.video.image_motion import configuration, parameters
+    requested_motion = metadata.get('image_motion', {})
+    motion = None
+    try:
+        candidate = configuration(requested_motion)
+        metadata['image_motion'] = candidate
+        if candidate['enabled'] and candidate['preset'] != 'static' and not is_video:
+            motion = candidate
+        metadata['image_motion_applied'] = bool(motion)
+    except (ValueError, TypeError):
+        from app.config.logging_config import get_logger
+        get_logger('video.image_motion').warning('Image motion failed; falling back to static background.')
+        metadata.update(image_motion_applied=False, image_motion_fallback='Invalid saved motion configuration', fallback_used=True)
     cycle_seconds = 60.0 if is_video or settings.studio_motion_mode == 'drift' else 6.0
-    seconds = cycle_seconds if subscribe else min(target, cycle_seconds)
+    if motion:
+        cycle_seconds = float(parameters(motion)['period'])
+    seconds = min(target, cycle_seconds)
     seconds = max(2, round(seconds * settings.video_fps)) / settings.video_fps
     out = directory / 'output'
     out.mkdir(parents=True, exist_ok=True)
@@ -98,7 +124,11 @@ def render_loop(settings, directory, metadata, background, is_video, audio, bran
     backend, encoder, failures = choose_render_backend(ffmpeg, settings)
     from app.video.visualizer import prepare_visualizer
     group = prepare_visualizer(settings)
-    command = short_command(backend, settings, background, is_video, branding, short, seconds, vis=group)
+    from app.video.dust import prepare_dust
+    dust = prepare_dust(settings)
+    metadata.update(dust_enabled=bool(dust), dust_path=dust['path'] if dust else None,
+                    dust_opacity=dust['opacity'] if dust else 0)
+    command = short_command(backend, settings, background, is_video, branding, short, seconds, vis=group, motion=motion, dust=dust)
     command += [*encoder_args(encoder, settings), '-bf', '0', '-g', str(6 * settings.video_fps),
                 '-force_key_frames', 'expr:gte(t,n_forced*6)',
                 '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(short)]
@@ -112,7 +142,21 @@ def render_loop(settings, directory, metadata, background, is_video, audio, bran
     write_json(out / 'render_commands.json', dict(short=command, loop=loop, mux=mux))
     timings = {}
     started = time.perf_counter()
-    render_with_progress(command, directory, seconds, settings)
+    try:
+        render_with_progress(command, directory, seconds, settings)
+    except RuntimeError as error:
+        # Cancellation, resource protection, and timeouts must never start a retry.
+        if not motion or (directory / 'cancel.request').exists() or any(word in str(error).lower() for word in ('cancel', 'resource protection', 'time limit', 'no frame progress')):
+            raise
+        from app.config.logging_config import get_logger
+        get_logger('video.image_motion').warning('Image motion failed; falling back to static background.')
+        metadata.update(image_motion_applied=False, image_motion_fallback='FFmpeg motion encode failed', fallback_used=True)
+        static = settings.model_copy(update={'studio_motion_mode': 'static'})
+        command = short_command(backend, static, background, False, branding, short, seconds, vis=group, dust=dust)
+        command += [*encoder_args(encoder, settings), '-bf', '0', '-g', str(6 * settings.video_fps),
+                    '-force_key_frames', 'expr:gte(t,n_forced*6)', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', str(short)]
+        write_json(out / 'render_commands.json', dict(short=command, loop=loop, mux=mux))
+        render_with_progress(command, directory, seconds, settings)
     timings['short_encode_seconds'] = round(time.perf_counter() - started, 3)
     resource_path = directory / 'render_resources.json'
     if resource_path.is_file():
@@ -123,25 +167,37 @@ def render_loop(settings, directory, metadata, background, is_video, audio, bran
     video = info['streams'][0]
     if (video['width'], video['height']) != (settings.video_width, settings.video_height) or abs(float(info['format']['duration'])-seconds) > 1/settings.video_fps:
         raise ValueError('Short clip dimensions or duration are invalid')
-    if subscribe:
-        from app.video.subscribe_loop import build_subscribe_cycle
-        cycle = build_subscribe_cycle(settings, directory, metadata, short, backend, encoder, ffmpeg, ffprobe)
-        timings['subscribe_build_seconds'] = metadata['subscribe_build_seconds']
-        loop, mux = copy_commands(ffmpeg, cycle, looped, audio, final, target, audio_stream['codec_name'])
+    from app.video.subscribe_overlay import prepare, overlay_command, record_fallback
+    overlay = prepare(settings, target, ffmpeg, ffprobe, metadata)
+    copy_mux = mux
+    if overlay:
+        mux = overlay_command(backend, settings, looped, audio, final, target, encoder, overlay)
         write_json(out / 'render_commands.json', dict(short=command, loop=loop, mux=mux))
     for name, cmd, result_path in [('loop', loop, looped), ('mux', mux, final)]:
         started = time.perf_counter()
         # The same cancellation, process cap, resource monitor and error handling apply.
-        render_with_progress(cmd, directory, target, settings)
+        try:
+            render_with_progress(cmd, directory, target, settings)
+        except RuntimeError as error:
+            if name != 'mux' or not overlay or (directory / 'cancel.request').exists() or any(
+                word in str(error).lower() for word in ('cancel', 'resource protection', 'time limit', 'no frame progress')):
+                raise
+            record_fallback(metadata, str(error))
+            mux = copy_mux
+            render_with_progress(copy_mux, directory, target, settings)
+            write_json(out / 'render_commands.json', dict(short=command, loop=loop, mux=mux))
         timings[name + '_seconds'] = round(time.perf_counter() - started, 3)
         result = probe(result_path, ffprobe)
         if abs(float(result['format']['duration'])-target) > settings.audio_duration_tolerance_seconds:
             raise ValueError(f'{name} output does not match target duration')
-    metadata.update(render_architecture='short_clip_copy_loop_with_subscribe' if subscribe else ('short_clip_copy_loop_with_visualizer' if group else 'short_clip_copy_loop'), render_segmented=False,
+    metadata.update(render_architecture='short_clip_copy_loop_with_subscribe' if metadata.get('subscribe_overlay_enabled') else ('short_clip_copy_loop_with_visualizer' if group else 'short_clip_copy_loop'), render_segmented=False,
                     render_part_count=1, short_clip_path=str(short), short_clip_seconds=seconds,
                     looped_video_path=str(looped), video_path=str(final), video_encoder=encoder,
                     encoder_probe_failures=failures, render_executable=str(backend),
                     video_duration_seconds=float(result['format']['duration']),
                     render_timings=timings, audio_mux_codec=mux[mux.index('-c:a')+1],
                     loop_seam='forward_reverse' if is_video else settings.studio_motion_mode)
+    if metadata.get('image_motion_applied'):
+        metadata['image_motion_cycle_seconds'] = float(parameters(motion)['period'])
+        metadata['loop_seam'] = 'periodic_image_motion'
     return final

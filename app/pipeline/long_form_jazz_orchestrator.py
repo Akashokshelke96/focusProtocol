@@ -228,6 +228,8 @@ class LongFormJazzOrchestrator:
         job_dir = Path("jobs") / job_id
         job_dir.mkdir(parents=True, exist_ok=True)
         job_metadata = dict(job.metadata or {})
+        from app.video.image_motion import configuration
+        job_metadata.setdefault('image_motion', configuration(self.context.get('image_motion')))
         if self.context:
             job_metadata.update(channel_id=self.context['channel']['id'], content_id=self.context['content_id'],
                                 profile_snapshot=self.context['profile'], channel_snapshot=self.context['channel'])
@@ -323,9 +325,10 @@ class LongFormJazzOrchestrator:
             self.job_manager.update_job(job)
             self.logger.info(f"[OK] Timeline built\n")
 
-            if (not self.context or self.context['channel'].get('profile_id') == 'blues') and not self.context.get('content_plan'):
+            if not self.context.get('content_plan'):
                 from app.video.branding import session_metadata
-                job_metadata.update(session_metadata(self.llm, job_id, target_duration_seconds / 60, self.context.get('concept', '')))
+                job_metadata.update(session_metadata(self.llm, job_id, target_duration_seconds / 60, self.context.get('concept', ''),
+                                                     profile=self.context.get('profile'), channel=self.context.get('channel')))
 
             # Stage 6: APPLY MOTION & RENDER
             if self.cancel_requested or (job_dir / 'cancel.request').exists():
@@ -391,6 +394,17 @@ class LongFormJazzOrchestrator:
         job_metadata['qc_status'] = qc['status']
         if qc['status'] == 'fail':
             raise ValueError('Automated QC failed: ' + ', '.join(c['name'] for c in qc['checks'] if c['status'] == 'fail'))
+
+        # Keep canonical job artifacts intact; export a channel-local final copy.
+        export_dir = self.context.get('channel', {}).get('output_dir', 'jobs')
+        if export_dir != 'jobs':
+            from app.studio.profiles import Channel
+            import shutil
+            channel = Channel.model_validate(self.context['channel'])
+            destination = Path(channel.output_dir) / job.id / Path(video_path).name
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(video_path, destination)
+            job_metadata['channel_output_path'] = str(destination)
 
         from app.studio.artifacts import cleanup_job
         try:
@@ -897,7 +911,7 @@ class LongFormJazzOrchestrator:
                         self.settings.audio_silence_removal_enabled,
                         self.settings.audio_silence_threshold_db,
                         self.settings.audio_silence_min_seconds,
-                        self.settings.audio_silence_keep_seconds)
+                        self.settings.audio_silence_keep_seconds, metadata=job_metadata)
         job_metadata.update(intro_fade_seconds=self.settings.intro_fade_seconds,
                             outro_fade_seconds=self.settings.outro_fade_seconds, audio_fades_enabled=True,
                             audio_silence_removal_enabled=self.settings.audio_silence_removal_enabled,
@@ -1720,9 +1734,13 @@ class LongFormJazzOrchestrator:
             self.logger.info("Generating YouTube metadata...")
             if self.context.get('content_plan'):
                 job_metadata.update(self.context['content_plan']['metadata'])
+                from app.studio.editorial import apply_tracklist
+                apply_tracklist(job_metadata)
                 write_json(job_dir / 'metadata.json', job_metadata)
                 return True
             if job_metadata.get('session_titles'):
+                from app.studio.editorial import apply_tracklist
+                apply_tracklist(job_metadata)
                 write_json(job_dir / 'metadata.json', job_metadata)
                 return True
             if self.context:
