@@ -51,17 +51,16 @@ fi
 echo "    ComfyUI dir: $COMFY_DIR"
 [ -d "$COMFY_DIR/models" ] || { echo "ERROR: $COMFY_DIR/models not found; set COMFY_DIR"; exit 1; }
 
-echo "==> [3/6] FLUX.1-schnell fp8 models (Apache-2.0, ~17GB on first run)"
-mkdir -p "$COMFY_DIR/models/unet" "$COMFY_DIR/models/clip" "$COMFY_DIR/models/vae"
-dl() { [ -f "$2" ] || { echo "    downloading $(basename "$2")"; curl -L --fail -o "$2" "$1"; }; }
-dl "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors" \
-   "$COMFY_DIR/models/unet/flux1-schnell-fp8.safetensors"
-dl "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors" \
-   "$COMFY_DIR/models/clip/t5xxl_fp8_e4m3fn.safetensors"
-dl "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors" \
-   "$COMFY_DIR/models/clip/clip_l.safetensors"
-dl "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors" \
-   "$COMFY_DIR/models/vae/ae.safetensors"
+echo "==> [3/6] FLUX.1-schnell fp8 checkpoint (all-in-one, Apache-2.0, ~17GB first run)"
+mkdir -p "$COMFY_DIR/models/checkpoints"
+CKPT="$COMFY_DIR/models/checkpoints/flux1-schnell-fp8.safetensors"
+if [ -f "$CKPT" ]; then
+  echo "    already present"
+else
+  echo "    downloading flux1-schnell-fp8.safetensors (public, no HF login)"
+  curl -L --fail -o "$CKPT" \
+    "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors"
+fi
 
 echo "==> [4/6] Project + pod Python extras"
 python -m pip install -q -r requirements.txt -r deploy/requirements-pod.txt

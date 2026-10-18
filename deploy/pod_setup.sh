@@ -28,17 +28,11 @@ if [ ! -d "$COMFY_DIR" ]; then
 fi
 python -m pip install -r "$COMFY_DIR/requirements.txt"
 
-echo "==> FLUX.1-schnell fp8 model set"
-mkdir -p "$MODELS/unet" "$MODELS/clip" "$MODELS/vae"
-# Apache-2.0 licensed; commercial-safe.
-[ -f "$MODELS/unet/flux1-schnell-fp8.safetensors" ] || curl -L -o "$MODELS/unet/flux1-schnell-fp8.safetensors" \
-  "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors"
-[ -f "$MODELS/clip/t5xxl_fp8_e4m3fn.safetensors" ] || curl -L -o "$MODELS/clip/t5xxl_fp8_e4m3fn.safetensors" \
-  "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors"
-[ -f "$MODELS/clip/clip_l.safetensors" ] || curl -L -o "$MODELS/clip/clip_l.safetensors" \
-  "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors"
-[ -f "$MODELS/vae/ae.safetensors" ] || curl -L -o "$MODELS/vae/ae.safetensors" \
-  "https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors"
+echo "==> FLUX.1-schnell fp8 checkpoint (all-in-one, Apache-2.0; commercial-safe)"
+mkdir -p "$MODELS/checkpoints"
+[ -f "$MODELS/checkpoints/flux1-schnell-fp8.safetensors" ] || \
+  curl -L -o "$MODELS/checkpoints/flux1-schnell-fp8.safetensors" \
+    "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors"
 
 echo "==> Project + pod extras"
 cd "$PROJECT_DIR"

@@ -28,16 +28,10 @@ RUN pip install --upgrade pip && \
 RUN git clone https://github.com/comfyanonymous/ComfyUI /workspace/ComfyUI && \
     pip install -r /workspace/ComfyUI/requirements.txt
 
-# FLUX.1-schnell fp8 model set (Apache-2.0).
-RUN mkdir -p /workspace/ComfyUI/models/{unet,clip,vae} && \
-    curl -L -o /workspace/ComfyUI/models/unet/flux1-schnell-fp8.safetensors \
-      https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors && \
-    curl -L -o /workspace/ComfyUI/models/clip/t5xxl_fp8_e4m3fn.safetensors \
-      https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
-    curl -L -o /workspace/ComfyUI/models/clip/clip_l.safetensors \
-      https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors && \
-    curl -L -o /workspace/ComfyUI/models/vae/ae.safetensors \
-      https://huggingface.co/black-forest-labs/FLUX.1-schnell/resolve/main/ae.safetensors
+# FLUX.1-schnell fp8 all-in-one checkpoint (Apache-2.0; public, no HF login).
+RUN mkdir -p /workspace/ComfyUI/models/checkpoints && \
+    curl -L -o /workspace/ComfyUI/models/checkpoints/flux1-schnell-fp8.safetensors \
+      https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors
 
 # Project + pod extras
 COPY . /workspace/long-form-video-generator
