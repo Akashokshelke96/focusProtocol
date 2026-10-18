@@ -30,8 +30,8 @@ RUN git clone https://github.com/comfyanonymous/ComfyUI /workspace/ComfyUI && \
 
 # FLUX.1-schnell fp8 model set (Apache-2.0).
 RUN mkdir -p /workspace/ComfyUI/models/{unet,clip,vae} && \
-    curl -L -o /workspace/ComfyUI/models/unet/flux1-schnell-fp8-e4m3fn.safetensors \
-      https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8-e4m3fn.safetensors && \
+    curl -L -o /workspace/ComfyUI/models/unet/flux1-schnell-fp8.safetensors \
+      https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors && \
     curl -L -o /workspace/ComfyUI/models/clip/t5xxl_fp8_e4m3fn.safetensors \
       https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors && \
     curl -L -o /workspace/ComfyUI/models/clip/clip_l.safetensors \

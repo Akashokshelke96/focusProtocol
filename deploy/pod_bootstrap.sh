@@ -54,8 +54,8 @@ echo "    ComfyUI dir: $COMFY_DIR"
 echo "==> [3/6] FLUX.1-schnell fp8 models (Apache-2.0, ~17GB on first run)"
 mkdir -p "$COMFY_DIR/models/unet" "$COMFY_DIR/models/clip" "$COMFY_DIR/models/vae"
 dl() { [ -f "$2" ] || { echo "    downloading $(basename "$2")"; curl -L --fail -o "$2" "$1"; }; }
-dl "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8-e4m3fn.safetensors" \
-   "$COMFY_DIR/models/unet/flux1-schnell-fp8-e4m3fn.safetensors"
+dl "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors" \
+   "$COMFY_DIR/models/unet/flux1-schnell-fp8.safetensors"
 dl "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/t5xxl_fp8_e4m3fn.safetensors" \
    "$COMFY_DIR/models/clip/t5xxl_fp8_e4m3fn.safetensors"
 dl "https://huggingface.co/comfyanonymous/flux_text_encoders/resolve/main/clip_l.safetensors" \
