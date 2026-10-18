@@ -3,6 +3,7 @@ from __future__ import annotations
 Job and state management
 """
 import json
+import os
 import sqlite3
 from dataclasses import dataclass, asdict
 from datetime import datetime
@@ -223,5 +224,39 @@ class JobManager:
                 error_message=row[7],
                 metadata=json.loads(row[8]) if row[8] else {},
             ))
-
         return jobs
+
+    def delete_job(self, job_id: str) -> int:
+        """Delete a job's folder and registry row. Returns freed bytes.
+
+        Refuses when the job id is unsafe, unknown, or still rendering.
+        """
+        import re
+        import shutil
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_-]*', job_id or ''):
+            raise ValueError('Invalid job id')
+        job_dir = (Path('jobs') / job_id).resolve()
+        if not str(job_dir).startswith(str(Path('jobs').resolve()) + os.sep):
+            raise ValueError('Invalid job id')
+        if not job_dir.is_dir():
+            raise ValueError('Job not found')
+        if self.get_job(job_id) is None:
+            raise ValueError('Job not found')
+        try:
+            from app.studio.recovery import process_alive
+            from app.youtube.state import read_json
+            progress = read_json(job_dir / 'render_progress.json', {})
+            if progress.get('status') == 'running' and process_alive(progress.get('owner')):
+                raise RuntimeError('Job is still rendering; cancel it first')
+        except (RuntimeError, ValueError):
+            raise
+        except Exception:
+            pass
+        freed = sum(f.stat().st_size for f in job_dir.rglob('*') if f.is_file())
+        shutil.rmtree(job_dir, ignore_errors=True)
+        conn = sqlite3.connect(self.db_path)
+        conn.execute("DELETE FROM jobs WHERE id = ?", (job_id,))
+        conn.commit()
+        conn.close()
+        logger.info(f"Job deleted: {job_id} ({freed} bytes freed)")
+        return freed

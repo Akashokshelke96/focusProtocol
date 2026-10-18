@@ -162,6 +162,16 @@ class LongFormJazzOrchestrator:
             for key, value in {**config, **metadata.get('visualization_config', {})}.items():
                 if hasattr(self.settings, key):
                     setattr(self.settings, key, value)
+            # Channel config always wins for channel-owned visual settings so a
+            # per-request render_config cannot override a channel's explicit
+            # visual_effect / branding / opacity choice.
+            channel = self.context.get('channel', {}) or {}
+            for key in ('visual_effect', 'visual_effect_opacity', 'branding_enabled', 'watermark_enabled'):
+                if key in channel and channel[key] is not None:
+                    try:
+                        setattr(self.settings, key, channel[key])
+                    except ValueError:
+                        pass
             job.status, job.error_message = 'running', None
             metadata.update(generation_status='running', retry_started_at=datetime.now().astimezone().isoformat())
             job.metadata = metadata
@@ -469,7 +479,9 @@ class LongFormJazzOrchestrator:
                 return []
 
             from app.providers.media_history import rotate
-            crossfade = self.settings.music_crossfade_seconds
+            # No audio processing: plain sequential concat, so no crossfade overlap math.
+            crossfade_enabled = False
+            crossfade = 0
             selected, actual = rotate(available_files, 'music', job_dir.name,
                                       target=target_duration_seconds, crossfade=crossfade)
             warning = None
@@ -483,6 +495,7 @@ class LongFormJazzOrchestrator:
                                 music_count=len(selected), music_source_count=len({m['source_id'] for m in selected}),
                                 music_total_duration=actual, requested_duration_seconds=target_duration_seconds,
                                 target_duration_seconds=actual, music_crossfade_seconds=crossfade,
+                                audio_crossfade_enabled=crossfade_enabled,
                                 music_selection_warning=warning, music_max_uses_per_track=2)
             return selected
 
@@ -545,7 +558,8 @@ class LongFormJazzOrchestrator:
             job_metadata['background_mode'] = background_mode
             assets = {}
             if background_mode == 'video':
-                assets['background'] = self._assign_loop_video(job_dir)
+                bg_folder = Path(channel.get('background_dir', 'inputVideos'))
+                assets['background'] = self._assign_loop_video(job_dir, bg_folder)
             else:
                 candidates = LocalBackgroundProvider(Path(channel.get('background_dir', 'backgroundImages'))).get_available_images()
                 if not candidates:
@@ -579,13 +593,11 @@ class LongFormJazzOrchestrator:
         return dict(background_path=Path(assets['background']['path']),
                     thumbnail_path=Path(assets['thumbnail']['path']))
 
-    VIDEO_BACKGROUND_DIR = Path("inputVideos")
     VIDEO_BACKGROUND_FORMATS = {".mp4", ".mov", ".mkv", ".webm"}
 
-    def _assign_loop_video(self, job_dir: Path) -> Dict[str, Any]:
-        """Randomly assign one muted looping background clip from inputVideos."""
+    def _assign_loop_video(self, job_dir: Path, folder: Path) -> Dict[str, Any]:
+        """Randomly assign one muted looping background clip from the channel's background_dir."""
         from app.studio.assets import asset_sha256
-        folder = self.VIDEO_BACKGROUND_DIR
         candidates = []
         if folder.exists():
             for candidate in sorted(folder.iterdir()):
@@ -600,7 +612,7 @@ class LongFormJazzOrchestrator:
                 except Exception as error:
                     self.logger.warning("Ignoring unusable loop clip %s: %s", candidate, error)
         if not candidates:
-            raise ValueError("No usable looping video in inputVideos/. Add an MP4/MOV/MKV/WEBM clip of at least 2 seconds.")
+            raise ValueError(f"No usable looping video in {folder}. Add an MP4/MOV/MKV/WEBM clip of at least 2 seconds.")
         source = random.choice(candidates).resolve()
         destination = (job_dir / "background_images" / ("background_loop" + source.suffix.lower())).resolve()
         self.logger.info("Using looped video background (muted): %s", source.name)
@@ -903,20 +915,26 @@ class LongFormJazzOrchestrator:
             return []
 
     def _concatenate_audio(self, track_paths, job_dir, job_metadata, target_duration_seconds):
-        from app.audio.local_timeline import assemble_tracks
+        # Audio processing (crossfade/loudness/fades/silence removal) is removed
+        # for now: songs are only concatenated sequentially, nothing else.
+        from app.audio.local_timeline import assemble_tracks_fast
         output = job_dir / 'music' / 'audio_concatenated.aac'
-        assemble_tracks(track_paths, output, target_duration_seconds,
-                        self.settings.music_crossfade_seconds, self.settings.ffmpeg_audio_bitrate,
-                        self.settings.intro_fade_seconds, self.settings.outro_fade_seconds,
-                        self.settings.audio_silence_removal_enabled,
-                        self.settings.audio_silence_threshold_db,
-                        self.settings.audio_silence_min_seconds,
-                        self.settings.audio_silence_keep_seconds, metadata=job_metadata)
-        job_metadata.update(intro_fade_seconds=self.settings.intro_fade_seconds,
-                            outro_fade_seconds=self.settings.outro_fade_seconds, audio_fades_enabled=True,
-                            audio_silence_removal_enabled=self.settings.audio_silence_removal_enabled,
-                            audio_silence_threshold_db=self.settings.audio_silence_threshold_db,
-                            audio_silence_min_seconds=self.settings.audio_silence_min_seconds)
+        assemble_tracks_fast(track_paths, output, target_duration_seconds,
+                             self.settings.ffmpeg_audio_bitrate, metadata=job_metadata)
+        job_metadata.update(intro_fade_seconds=0, outro_fade_seconds=0, audio_fades_enabled=False,
+                            audio_silence_removal_enabled=False,
+                            audio_crossfade_enabled=False, audio_loudness_enabled=False,
+                            audio_processing_mode='fast_concat')
+        self.logger.info("Fast-concat audio only (no crossfade/loudness/fades/silence)")
+        # NOTE (processing disabled, kept for reference):
+        # from app.audio.local_timeline import assemble_tracks
+        # assemble_tracks(track_paths, output, target_duration_seconds,
+        #                 self.settings.music_crossfade_seconds, self.settings.ffmpeg_audio_bitrate,
+        #                 self.settings.intro_fade_seconds, self.settings.outro_fade_seconds,
+        #                 self.settings.audio_silence_removal_enabled,
+        #                 self.settings.audio_silence_threshold_db,
+        #                 self.settings.audio_silence_min_seconds,
+        #                 self.settings.audio_silence_keep_seconds, metadata=job_metadata)
         job_metadata.update(audio_path=str(output), audio_duration=self._probe_duration(output))
         return output
 
@@ -1252,6 +1270,10 @@ class LongFormJazzOrchestrator:
             from app.video.branding import loop_branding
             started = time.perf_counter()
             branding = loop_branding(job_dir, self.settings, job_metadata)
+            watermark_path = self._find_watermark() if self.settings.watermark_enabled else None
+            if watermark_path:
+                job_metadata['watermark_path'] = str(watermark_path)
+                job_metadata['watermark_enabled'] = True
             job_metadata.update(visualizer_enabled=False, visualizer_group=None,
                                 waveform_enabled=False, waveform_animated=False,
                                 waveform_preview_path=None, subscribe_overlay_enabled=False,
@@ -1264,7 +1286,7 @@ class LongFormJazzOrchestrator:
                 subscribe_overlay_enabled=self.settings.subscribe_overlay_enabled)
             output = render_loop(self.settings, job_dir, job_metadata, Path(clips[0].asset_path),
                                  clips[0].asset_type == 'video', audio_path, branding,
-                                 find_ffmpeg(), find_ffprobe())
+                                 find_ffmpeg(), find_ffprobe(), watermark=watermark_path)
             job_metadata['render_elapsed_seconds'] = round(time.perf_counter()-started, 3)
             self.logger.info('Short encode / background copy loop / final mux: %s', job_metadata['render_timings'])
             return output
@@ -1550,9 +1572,10 @@ class LongFormJazzOrchestrator:
         """Find an optional PNG watermark without making it a render dependency."""
         if not self.settings.watermark_enabled:
             return None
-        watermark_dir = Path("watermark")
+        channel = self.context.get('channel', {}) or {}
+        watermark_dir = Path(channel.get('watermark_path', 'watermark'))
         if not watermark_dir.exists():
-            self.logger.info("Watermark directory not found; continuing without watermark")
+            self.logger.info("Watermark directory not found: %s; continuing without watermark", watermark_dir)
             return None
         for candidate in sorted(watermark_dir.glob("*.png")):
             try:
@@ -1563,7 +1586,7 @@ class LongFormJazzOrchestrator:
                 return candidate
             except Exception as error:
                 self.logger.warning("Ignoring invalid watermark %s: %s", candidate, error)
-        self.logger.warning("No valid PNG watermark found; continuing without watermark")
+        self.logger.warning("No valid PNG watermark found in %s; continuing without watermark", watermark_dir)
         return None
 
     def _find_subscribe_video(self) -> Optional[Path]:

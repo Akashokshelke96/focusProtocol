@@ -14,11 +14,13 @@ from app.config.logging_config import get_logger, get_recent_logs, setup_logging
 from app.pipeline.long_form_jazz_orchestrator import LongFormJazzOrchestrator
 from app.jobs.manager import JobManager
 from app.youtube.oauth import YouTubeService
+from app.narration.api import narration_api
 
 logger = get_logger("api.jazz")
 
 app = Flask(__name__, template_folder="../../templates", static_folder="../../static")
 CORS(app)
+app.register_blueprint(narration_api)
 app.config['MAX_CONTENT_LENGTH'] = 512 * 1024 * 1024
 setup_logging(get_settings().log_level)
 
@@ -101,7 +103,10 @@ def start_generation():
 
         # Start generation in background
         settings = get_settings().model_copy(deep=True)
-        for key in ("visualizer_enabled", "watermark_enabled", "subscribe_overlay_enabled"):
+        for key in ("visualizer_enabled", "watermark_enabled", "subscribe_overlay_enabled",
+                      "dust_enabled", "branding_enabled",
+                      "audio_crossfade_enabled", "audio_loudness_enabled",
+                      "audio_fades_enabled", "audio_silence_removal_enabled"):
             if key in data:
                 if type(data[key]) is not bool:
                     return jsonify({"status": "error", "message": f"{key} must be a boolean"}), 400
@@ -121,8 +126,26 @@ def start_generation():
         if data.get('channel_id') or data.get('image_motion'):
             channel = studio_service.store.channel(data.get('channel_id', 'focus-protocol'))
             profile = next(p for p in studio_service.store.read()['profiles'] if p['id'] == channel['profile_id'])
-            context = dict(channel=channel, profile=profile, content_id='', concept=data.get('concept', channel['name']))
+            context = dict(channel=channel, profile=profile, content_id='', concept=data.get('concept', channel['name']),
+                           background_mode=channel.get('background_mode', 'image'))
             settings.channel_brand_name = channel['name']
+            # Channel overlay/motion defaults; explicit request fields above win.
+            for skey, ckey in (("visualizer_enabled", "visualizer_enabled"),
+                               ("watermark_enabled", "watermark_enabled"),
+                               ("subscribe_overlay_enabled", "subscribe_enabled"),
+                               ("dust_enabled", "dust_enabled"),
+                               ("branding_enabled", "branding_enabled"),
+                               ("studio_motion_mode", "motion_mode")):
+                if skey not in data and ckey in channel:
+                    try:
+                        setattr(settings, skey, channel[ckey])
+                    except ValueError:
+                        pass
+            if "visual_effect" not in data and channel.get("visual_effect"):
+                try:
+                    settings.visual_effect = channel["visual_effect"]
+                except ValueError:
+                    pass
         music_dir = data.get('music_dir')
         if music_dir and not context:
             context['channel'] = {'music_dir': music_dir}
@@ -150,12 +173,33 @@ def start_generation():
             global current_job
 
             try:
-                success = orchestrator.run(
-                    video_count=video_count,
-                    test_mode=test_mode,
-                    test_duration_minutes=3 if test_mode else None,
-                    duration_minutes=duration_minutes,
-                )
+                # The studio coordinator briefly holds the shared generation
+                # lock on its 5s reconcile ticks. Wait it out instead of
+                # failing instantly; a genuinely busy pipeline still 409s up
+                # front via the pre-check above.
+                import time as _time
+                from app.youtube.state import publishing_lock as _gen_lock
+                _deadline = _time.time() + 300
+                while True:
+                    try:
+                        with _gen_lock(Path("jobs") / "generation"):
+                            pass
+                        break
+                    except RuntimeError:
+                        if _time.time() >= _deadline:
+                            raise
+                        current_job["message"] = "Waiting for studio task to release the pipeline..."
+                        _time.sleep(3)
+                current_job["message"] = "Initializing..."
+                from app.utils.power import keep_awake, require_scratch_space
+                require_scratch_space(Path("jobs"), duration_minutes)
+                with keep_awake(f"{video_count}x{duration_minutes}min generation"):
+                    success = orchestrator.run(
+                        video_count=video_count,
+                        test_mode=test_mode,
+                        test_duration_minutes=3 if test_mode else None,
+                        duration_minutes=duration_minutes,
+                    )
 
                 if success:
                     current_job["status"] = "completed"
@@ -465,6 +509,26 @@ def get_job(job_id):
             "status": "error",
             "message": str(e)
         }), 500
+
+
+@app.route('/api/jazz/jobs/<job_id>', methods=['DELETE'])
+def delete_job(job_id):
+    """Delete a job's folder and registry row, freeing disk."""
+    global current_job
+    try:
+        if current_job and current_job.get('job_id') == job_id and current_job.get('status') == 'running':
+            return jsonify({"status": "error", "message": "Job is generating; cancel it first"}), 409
+        freed = job_manager.delete_job(job_id)
+        if current_job and current_job.get('job_id') == job_id:
+            current_job = None
+        return jsonify({"status": "success", "job_id": job_id, "freed_bytes": freed})
+    except RuntimeError as e:
+        return jsonify({"status": "error", "message": str(e)}), 409
+    except ValueError as e:
+        return jsonify({"status": "error", "message": str(e)}), 404 if 'not found' in str(e).lower() else 400
+    except Exception as e:
+        logger.error(f"Failed to delete job: {e}")
+        return jsonify({"status": "error", "message": str(e)}), 500
 
 
 # ============================================================================

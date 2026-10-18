@@ -173,7 +173,7 @@ class PublishingQueue:
         from app.youtube.display_status import publishing_state
         display = publishing_state(row)
         row.update(upload_status='uploaded' if display['uploaded'] else display['state'],
-                   thumbnail_status='uploaded' if row.get('thumbnail_uploaded') else ('failed' if row.get('youtube_status') == 'thumbnail_retry' else ('pending' if row.get('thumbnail_path') else 'not_requested')),
+                   thumbnail_status='uploaded' if row.get('thumbnail_uploaded') else ('failed' if row.get('youtube_status') in ('thumbnail_retry', 'thumbnail_blocked') else ('pending' if row.get('thumbnail_path') else 'not_requested')),
                    metadata_status='verified' if row.get('metadata_verified') and not row.get('metadata_dirty') else 'pending',
                    last_checked=display['last_checked'], upload_error=row.get('last_error'))
         if display['state'] == 'published':
@@ -254,9 +254,8 @@ class PublishingQueue:
                     continue
                 if row['youtube_status'] == 'duplicate':
                     continue
-                marker = 'engine-sha256-' + row.get('sha256', '')
                 if row['youtube_status'] in ('uploading', 'needs_review'):
-                    match = next((v for v in remote if marker in v.get('snippet', {}).get('tags', [])), None)
+                    match = next((v for v in remote if v.get('snippet', {}).get('title') == row.get('title')), None)
                     if match:
                         row.update(youtube_video_id=match['id'], youtube_status='uploaded', last_error=None)
                     else:
@@ -270,8 +269,7 @@ class PublishingQueue:
                 try:
                     validate_video(row['video_path'], row)
                     row['sha256'] = file_hash(row['video_path'])
-                    marker = 'engine-sha256-' + row['sha256']
-                    remote_match = next((v for v in remote if marker in v.get('snippet', {}).get('tags', [])), None)
+                    remote_match = next((v for v in remote if v.get('snippet', {}).get('title') == row.get('title')), None)
                     if remote_match:
                         row.update(youtube_video_id=remote_match['id'], youtube_status='uploaded')
                         if not dry_run:
@@ -307,6 +305,16 @@ class PublishingQueue:
                     if scheduled:
                         row['privacy_status'] = 'private'
                     reserved.append(scheduled)
+                    import re as _re
+                    if _re.search(r'\bVol\.?\s*\d+', row.get('title') or '') and not row.get('playlist_vol'):
+                        try:
+                            from app.studio.store import StudioStore as _VolumeStore
+                            _vol_channel = _VolumeStore(self.root / 'studio').channel(row.get('channel_id', 'focus-protocol'))
+                            row['playlist_vol'] = int(_vol_channel.get('playlist_volume') or 0) + 1
+                        except (ValueError, TypeError):
+                            row['playlist_vol'] = 1
+                    if row.get('playlist_vol'):
+                        row['title'] = _re.sub(r'\bVol\.?\s*\d+', 'Vol. %02d' % int(row['playlist_vol']), row.get('title'), count=1)
                     if dry_run:
                         row['youtube_status'] = 'ready'
                         known[row['sha256']] = row
@@ -319,8 +327,18 @@ class PublishingQueue:
                         row.update(youtube_video_id=result['video_id'], youtube_status='uploaded', upload_percent=100, upload_timestamp=datetime.now(UTC).isoformat())
                         row['upload_elapsed_seconds'] = round((datetime.now(UTC) - datetime.fromisoformat(row['upload_started_at'])).total_seconds(), 3)
                         row['metadata_dirty'] = False
+                        if row.get('playlist_vol'):
+                            try:
+                                from app.studio.store import StudioStore as _BumpStore
+                                _bump = _BumpStore(self.root / 'studio')
+                                with _bump.transaction() as _state:
+                                    for _c in _state['channels']:
+                                        if _c['id'] == row.get('channel_id', 'focus-protocol'):
+                                            _c['playlist_volume'] = max(int(_c.get('playlist_volume') or 0), int(row['playlist_vol']))
+                            except Exception:
+                                pass
                         self.save(row)  # persist ID BEFORE optional thumbnail upload
-                    metadata = {**row, 'tags': list(row.get('tags', [])) + ['engine-sha256-' + row['sha256']]}
+                    metadata = {**row, 'tags': list(row.get('tags', []))}
                     last_percent = [-1]
                     def progress(percent):
                         # One durable update per percentage point; the video ID remains authoritative.

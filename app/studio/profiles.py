@@ -47,6 +47,7 @@ class Channel(BaseModel):
     name: str = Field(min_length=1, max_length=80)
     profile_id: str = 'blues'
     youtube_channel_id: str = ''
+    playlist_volume: int = 0
     youtube_account: str = ''
     timezone: str = 'Asia/Kolkata'
     videos_per_day: int = Field(default=2, ge=1, le=24)
@@ -65,10 +66,12 @@ class Channel(BaseModel):
     thumbnail_dir: str = 'thumbnail'
     watermark_path: str = 'watermark'
     output_dir: str = 'jobs'
-    ui_palette: str = Field(default='forest', pattern='^(forest|midnight|plum|ember)$')
+    ui_palette: str = Field(default='forest', pattern='^(forest|midnight|plum|ember|crimson)$')
     thumbnail_style: str = 'branded'
     thumbnail_color: str = '#E8C990'
     watermark_enabled: bool = True
+    branding_enabled: bool = True
+    dust_enabled: bool = True
     subscribe_enabled: bool = False  # Preserve old channel defaults.
     subscribe_overlay_interval_seconds: int = Field(default=180, ge=1)
     subscribe_overlay_width_ratio: float = Field(default=.17, gt=0, le=.5)
@@ -77,6 +80,12 @@ class Channel(BaseModel):
     auto_publish: bool = False
     daily_target: int = Field(default=2, ge=1, le=20)
     backlog_limit: int = Field(default=6, ge=1, le=50)
+    # Optional fixed title series, e.g. '... Vol. {vol:02d}'. Empty = profile patterns.
+    series_title_template: str = ''
+    series_description_template: str = ''
+    series_tags: list[str] = Field(default_factory=list)
+    series_hashtags: list[str] = Field(default_factory=list)
+    series_next_vol: int = Field(default=1, ge=1)
 
     @field_validator('timezone')
     @classmethod

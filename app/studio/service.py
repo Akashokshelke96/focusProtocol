@@ -468,6 +468,8 @@ class StudioService:
                     if key != 'name':
                         setattr(settings, key, value)
                 settings.watermark_enabled = channel['watermark_enabled']
+                settings.branding_enabled = channel.get('branding_enabled', True)
+                settings.dust_enabled = channel.get('dust_enabled', True)
                 settings.subscribe_overlay_enabled = channel['subscribe_enabled']
                 for key in ('subscribe_overlay_interval_seconds', 'subscribe_overlay_width_ratio', 'subscribe_overlay_file'):
                     if key in channel:
@@ -500,10 +502,13 @@ class StudioService:
                 context = dict(channel=channel, profile=profile, content_id=item['id'], concept=item['title'], job_id=job_id, content_plan=plan,
                                background_mode=item.get('background_mode', 'image'), lyrics_captions=item.get('lyrics_captions', False), image_motion=item.get('image_motion'))
                 engine = LongFormJazzOrchestrator(settings, context=context)
-                if (self.root / job_id / 'job.json').exists():
-                    success = engine.resume(job_id)
-                else:
-                    success = engine.run(video_count=1, duration_minutes=item['duration_minutes'])
+                from app.utils.power import keep_awake, require_scratch_space
+                require_scratch_space(self.root, item['duration_minutes'])
+                with keep_awake(f"studio {job_id}"):
+                    if (self.root / job_id / 'job.json').exists():
+                        success = engine.resume(job_id)
+                    else:
+                        success = engine.run(video_count=1, duration_minutes=item['duration_minutes'])
                 if not success:
                     raise RuntimeError(read_json(self.root / job_id / 'job.json', {}).get('error_message') or 'Generation failed; inspect the job and logs')
                 result = self.job(job_id).get('qc') or self.qc(job_id)

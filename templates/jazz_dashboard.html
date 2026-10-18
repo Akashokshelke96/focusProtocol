@@ -615,7 +615,7 @@ function readImageMotion(root){const find=name=>root.querySelector('[name="image
         let channels = [];
         function channelURL(url){return url+(url.includes('?')?'&':'?')+'channel='+encodeURIComponent(activeChannel);}
         async function loadChannels(){const response=await fetch('/api/studio/state');const data=await response.json();channels=data.channels;const select=document.getElementById('active-channel');select.replaceChildren(...channels.map(c=>new Option(c.name,c.id)));if(!channels.some(c=>c.id===activeChannel))activeChannel='focus-protocol';select.value=activeChannel;switchChannel();}
-        async function switchChannel(){clearInterval(statusInterval);document.getElementById('preview-panel').style.display='none';document.getElementById('progress-section').style.display='none';document.getElementById('btn-cancel').disabled=true;currentJob=null;activeChannel=document.getElementById('active-channel').value;localStorage.setItem('studio-channel',activeChannel);const channel=channels.find(c=>c.id===activeChannel);ChannelUI.apply(channel);document.getElementById('music-dir').value=channel.music_dir;document.getElementById('music-dir').readOnly=true;document.getElementById('watermark-enabled').checked=channel.watermark_enabled;document.getElementById('duration-minutes').value=channel.duration_minutes;checkStatus();const id=activeChannel;document.getElementById('channel-status').textContent=channel.name+' · checking YouTube…';loadJobs();showPublishingQueue();loadComponents();try{const response=await fetch(channelURL(API_BASE+'/youtube/status'));const result=await response.json();if(activeChannel===id)document.getElementById('channel-status').textContent=channel.name+' · '+(result.connected?result.channel_name:'Not connected')+' · '+result.video_count+' videos';}catch(e){if(activeChannel===id)document.getElementById('channel-status').textContent='Connection check failed';}}
+        async function switchChannel(){clearInterval(statusInterval);document.getElementById('preview-panel').style.display='none';document.getElementById('progress-section').style.display='none';document.getElementById('btn-cancel').disabled=true;currentJob=null;activeChannel=document.getElementById('active-channel').value;localStorage.setItem('studio-channel',activeChannel);const channel=channels.find(c=>c.id===activeChannel);ChannelUI.apply(channel);document.getElementById('music-dir').value=channel.music_dir;document.getElementById('music-dir').readOnly=true;document.getElementById('watermark-enabled').checked=channel.watermark_enabled;document.getElementById('visualizer-enabled').checked=!!channel.visualizer_enabled;document.getElementById('subscribe-overlay-enabled').checked=!!channel.subscribe_enabled;if(channel.visual_effect)document.getElementById('video-filter').value=channel.visual_effect;if(channel.visual_effect_opacity!=null)document.getElementById('filter-intensity').value=String(channel.visual_effect_opacity);document.getElementById('duration-minutes').value=channel.duration_minutes;checkStatus();const id=activeChannel;document.getElementById('channel-status').textContent=channel.name+' · checking YouTube…';loadJobs();showPublishingQueue();loadComponents();try{const response=await fetch(channelURL(API_BASE+'/youtube/status'));const result=await response.json();if(activeChannel===id)document.getElementById('channel-status').textContent=channel.name+' · '+(result.connected?result.channel_name:'Not connected')+' · '+result.video_count+' videos';}catch(e){if(activeChannel===id)document.getElementById('channel-status').textContent='Connection check failed';}}
         let currentJob = null;
         let statusInterval = null;
 
@@ -818,6 +818,7 @@ function readImageMotion(root){const find=name=>root.querySelector('[name="image
                             <div class="action-buttons">
                                 <button class="btn-small" onclick="event.stopPropagation(); previewJob('${job.id}')">👁 Preview</button>
                                 <button class="btn-small" onclick="event.stopPropagation(); downloadJob('${job.id}')">⬇ Download</button>
+                                <button class="btn-small btn-danger" onclick="event.stopPropagation(); deleteJob('${job.id}')">🗑 Delete</button>
                             </div>
                         </div>
                     `).join('');
@@ -977,6 +978,23 @@ function readImageMotion(root){const find=name=>root.querySelector('[name="image
 
         async function downloadJob(jobId) {
             window.location.href = `${API_BASE}/video/${jobId}/download`;
+        }
+
+        async function deleteJob(jobId) {
+            if (!confirm(`Delete ${jobId} and its video files from disk? This cannot be undone.`)) return;
+            try {
+                const response = await fetch(channelURL(`${API_BASE}/jobs/${jobId}`), { method: 'DELETE' });
+                const data = await response.json();
+                if (data.status === 'success') {
+                    alert(`Deleted ${(data.freed_bytes / 1e9).toFixed(2)} GB freed.`);
+                    document.getElementById('preview-panel').style.display = 'none';
+                    loadJobs();
+                } else {
+                    alert('Delete failed: ' + data.message);
+                }
+            } catch (error) {
+                alert('Delete failed: ' + error.message);
+            }
         }
 
         async function loadJobDetail(jobId) {

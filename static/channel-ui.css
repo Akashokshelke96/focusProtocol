@@ -6,3 +6,8 @@ input,textarea,select,button:not(.primary){background:var(--panel2)!important;co
 @media(max-width:640px){.channel-fields{grid-template-columns:1fr}}
 .nav-link.active,.channel-icon{background:var(--panel2)!important;color:var(--accent)!important}
 .channel-bar label{color:var(--text)}.control-grid>*{min-width:0}input{max-width:100%}
+/* Production board: horizontal scrollbar pinned to the TOP of the columns
+   (flip trick) so wide boards scroll sideways without scrolling to the bottom. */
+.board{transform:rotateX(180deg);scrollbar-gutter:stable}
+.board>.column{transform:rotateX(180deg)}
+.board .column-head{position:sticky;top:0;z-index:2;background:#141812}

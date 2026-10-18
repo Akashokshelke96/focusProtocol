@@ -4,7 +4,8 @@ window.ChannelUI = (() => {
     forest: ['#101a16','#192720','#213229','#3b5142','#e9f1e7','#a9bbaa','#c7e5ac'],
     midnight: ['#101829','#19243b','#22314b','#3a5075','#edf2fc','#a9bad7','#a8ccff'],
     plum: ['#211529','#2e2038','#3c2a48','#60416e','#f6edf9','#c8b0d3','#deb8f2'],
-    ember: ['#241813','#33251e','#443027','#70503d','#fff0e4','#d3b7a3','#f0be8e']
+    ember: ['#241813','#33251e','#443027','#70503d','#fff0e4','#d3b7a3','#f0be8e'],
+    crimson: ['#220f14','#331722','#452029','#70404c','#fdeef1','#d3a9b3','#f2a8bc']
   };
   function apply(channel) {
     const colors = palettes[channel?.ui_palette] || palettes[channel?.id === 'wolfie-blues' ? 'midnight' : 'forest'];

@@ -2,7 +2,7 @@
 from collections import Counter
 
 STATES = ('not_uploaded', 'uploading', 'processing', 'uploaded', 'scheduled', 'published', 'failed')
-FAILURES = {'failed', 'needs_review', 'verification_failed', 'processing_timeout', 'thumbnail_retry'}
+FAILURES = {'failed', 'needs_review', 'verification_failed', 'processing_timeout', 'thumbnail_retry', 'thumbnail_blocked'}
 
 
 def publishing_state(row):

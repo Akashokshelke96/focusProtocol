@@ -15,7 +15,18 @@ def write_json(path, value):
             json.dump(value, stream, indent=2)
             stream.flush()
             os.fsync(stream.fileno())
-        os.replace(temporary, path)
+        # Windows transiently locks files being scanned or co-written
+        # (AV/indexer, coordinator reconcile). Retry the atomic replace
+        # instead of failing the whole stage on a momentary lock.
+        import time
+        for attempt in range(6):
+            try:
+                os.replace(temporary, path)
+                break
+            except PermissionError:
+                if attempt == 5:
+                    raise
+                time.sleep(0.3)
     finally:
         if os.path.exists(temporary):
             os.unlink(temporary)

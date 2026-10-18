@@ -288,7 +288,8 @@ def inspect_media():
 def settings():
     settings = get_settings()
     allowed = ('video_width', 'video_height', 'video_fps', 'ffmpeg_preset', 'ffmpeg_crf', 'target_duration_minutes',
-               'audio_loop_track_count', 'jazz_audio_crossfade_seconds', 'waveform_enabled', 'waveform_height_ratio', 'waveform_width_ratio',
+               'audio_loop_track_count', 'jazz_audio_crossfade_seconds', 'audio_crossfade_enabled', 'audio_loudness_enabled',
+               'audio_fades_enabled', 'audio_silence_removal_enabled', 'waveform_enabled', 'waveform_height_ratio', 'waveform_width_ratio',
                'watermark_enabled', 'subscribe_overlay_enabled', 'youtube_upload_enabled', 'youtube_timezone', 'youtube_processing_timeout')
     return jsonify(values={key: getattr(settings, key) for key in allowed}, credentials={'youtube_client_configured': bool(settings.youtube_client_id or Path(settings.youtube_client_secrets_file).is_file()), 'image_api_configured': bool(settings.colab_image_api_url)},
                    storage='Channel profiles and queues: jobs/studio/operations.json. Per-job publishing: youtube.json. Existing registry retained for compatibility.')

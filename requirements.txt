@@ -25,3 +25,5 @@ pytest>=7.0.0
 tzdata>=2025.1
 psutil>=7.0,<8
 imageio-ffmpeg==0.6.0
+# Live ComfyUI execution progress over WebSocket (optional; polling fallback works without it)
+websocket-client>=1.7.0

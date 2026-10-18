@@ -69,7 +69,7 @@ def test_uncertain_upload_never_retries_blindly(setup):
     assert service.upload.call_count==1
     row=q.scan()[0]
     service.video_details.return_value={'processingDetails':{'processingStatus':'failed'},'status':{'failureReason':'codec'}}
-    service.channel_videos.return_value=[{'id':'recovered','snippet':{'tags':['engine-sha256-'+row['sha256']]},'status':{}}]
+    service.channel_videos.return_value=[{'id':'recovered','snippet':{'title':'a'},'status':{}}]
     assert q.publish()[0]['youtube_video_id']=='recovered'
     assert service.upload.call_count==1
 

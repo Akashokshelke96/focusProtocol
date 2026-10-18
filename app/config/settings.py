@@ -81,6 +81,7 @@ class Settings(BaseSettings):
     astrofox_glow_opacity: float = Field(default=0.22, alias="ASTROFOX_GLOW_OPACITY")
     astrofox_vignette_opacity: float = Field(default=0.22, alias="ASTROFOX_VIGNETTE_OPACITY")
     watermark_enabled: bool = Field(default=True, alias="WATERMARK_ENABLED")
+    branding_enabled: bool = Field(default=True, alias="BRANDING_ENABLED")
     watermark_width_ratio: float = Field(default=0.016667, alias="WATERMARK_WIDTH_RATIO")
     watermark_right_padding_ratio: float = Field(default=0.02, alias="WATERMARK_RIGHT_PADDING_RATIO")
     watermark_bottom_padding_ratio: float = Field(default=0.02, alias="WATERMARK_BOTTOM_PADDING_RATIO")
@@ -204,6 +205,73 @@ class Settings(BaseSettings):
     jazz_image_motion_strength: float = Field(default=0.08, alias="JAZZ_IMAGE_MOTION_STRENGTH")
     jazz_test_duration_minutes: int = Field(default=3, alias="JAZZ_TEST_DURATION_MINUTES")
 
+    # ------------------------------------------------------------------
+    # Narrated long-form pipeline (sibling to the jazz pipeline)
+    # Script -> local approval -> remote TTS/WhisperX/ComfyUI -> FFmpeg
+    # ------------------------------------------------------------------
+    narration_target_duration_minutes: int = Field(default=10, alias="NARRATION_TARGET_DURATION_MINUTES")
+    narration_scene_seconds: float = Field(default=2.5, gt=0, alias="NARRATION_SCENE_SECONDS")
+    narration_min_scenes: int = Field(default=200, ge=1, alias="NARRATION_MIN_SCENES")
+    narration_max_scenes: int = Field(default=260, ge=1, alias="NARRATION_MAX_SCENES")
+    narration_manifest_batch_size: int = Field(default=20, ge=1, le=60, alias="NARRATION_MANIFEST_BATCH_SIZE")
+    narration_max_retries: int = Field(default=3, ge=0, le=10, alias="NARRATION_MAX_RETRIES")
+    narration_style_prefix: str = Field(
+        default=("Cinematic documentary still, photorealistic, 35mm film, shallow depth of field, "
+                 "volumetric natural light, muted earth-toned color grade, ultra detailed, 16:9, no text, no watermark"),
+        alias="NARRATION_STYLE_PREFIX")
+    narration_negative_prompt: str = Field(
+        default=("text, words, letters, caption, watermark, signature, logo, blurry, low quality, "
+                 "deformed, extra limbs, cartoon, anime"),
+        alias="NARRATION_NEGATIVE_PROMPT")
+    narration_motion: str = Field(default="kenburns", pattern="^(none|kenburns)$", alias="NARRATION_MOTION")
+    narration_motion_strength: float = Field(default=0.08, ge=0, le=0.5, alias="NARRATION_MOTION_STRENGTH")
+    narration_video_encoder: str = Field(default="", alias="NARRATION_VIDEO_ENCODER")
+    narration_export_dir: str = Field(default="output/narration", alias="NARRATION_EXPORT_DIR")
+    narration_export_enabled: bool = Field(default=True, alias="NARRATION_EXPORT_ENABLED")
+
+    # Remote RunPod services
+    narration_remote_enabled: bool = Field(default=False, alias="NARRATION_REMOTE_ENABLED")
+    narration_tts_url: str = Field(default="", alias="NARRATION_TTS_URL")
+    narration_tts_model: str = Field(default="kokoro", alias="NARRATION_TTS_MODEL")
+    narration_tts_voice: str = Field(default="af_heart", alias="NARRATION_TTS_VOICE")
+    narration_tts_format: str = Field(default="wav", alias="NARRATION_TTS_FORMAT")
+    narration_tts_speed: float = Field(default=1.0, gt=0, alias="NARRATION_TTS_SPEED")
+    narration_tts_timeout_seconds: int = Field(default=900, alias="NARRATION_TTS_TIMEOUT_SECONDS")
+    narration_tts_api_key: str = Field(default="", alias="NARRATION_TTS_API_KEY")
+    narration_align_url: str = Field(default="", alias="NARRATION_ALIGN_URL")
+    narration_align_token: str = Field(default="", alias="NARRATION_ALIGN_TOKEN")
+    narration_align_timeout_seconds: int = Field(default=900, alias="NARRATION_ALIGN_TIMEOUT_SECONDS")
+
+    # Audio backends: "http" (remote services) or local libraries on the pod
+    narration_tts_backend: str = Field(default="http", pattern="^(http|kokoro_local)$", alias="NARRATION_TTS_BACKEND")
+    narration_align_backend: str = Field(default="http", pattern="^(http|whisperx_local)$", alias="NARRATION_ALIGN_BACKEND")
+    narration_kokoro_lang: str = Field(default="a", alias="NARRATION_KOKORO_LANG")
+    narration_kokoro_sample_rate: int = Field(default=24000, alias="NARRATION_KOKORO_SAMPLE_RATE")
+    narration_whisperx_model: str = Field(default="large-v3", alias="NARRATION_WHISPERX_MODEL")
+    narration_whisperx_device: str = Field(default="cuda", alias="NARRATION_WHISPERX_DEVICE")
+    narration_whisperx_compute_type: str = Field(default="float16", alias="NARRATION_WHISPERX_COMPUTE_TYPE")
+
+    # Pod batch runner
+    narration_batch_workspace: str = Field(default="workspace/batches", alias="NARRATION_BATCH_WORKSPACE")
+    pod_batch_host: str = Field(default="0.0.0.0", alias="POD_BATCH_HOST")
+    pod_batch_port: int = Field(default=8000, alias="POD_BATCH_PORT")
+    pod_batch_url: str = Field(default="", alias="POD_BATCH_URL")
+    pod_batch_token: str = Field(default="", alias="POD_BATCH_TOKEN")
+    pod_batch_poll_seconds: float = Field(default=3.0, gt=0, alias="POD_BATCH_POLL_SECONDS")
+
+    # ComfyUI (direct HTTP + WebSocket on an exposed RunPod port)
+    comfy_base_url: str = Field(default="", alias="COMFY_BASE_URL")
+    comfy_ws_url: str = Field(default="", alias="COMFY_WS_URL")
+    comfy_workflow_path: str = Field(default="workflows/flux_schnell_api.json", alias="COMFY_WORKFLOW_PATH")
+    comfy_input_map: str = Field(default="", alias="COMFY_INPUT_MAP")
+    comfy_timeout_seconds: int = Field(default=600, alias="COMFY_TIMEOUT_SECONDS")
+    comfy_poll_interval_seconds: float = Field(default=2.0, gt=0, alias="COMFY_POLL_INTERVAL_SECONDS")
+    comfy_steps: int = Field(default=4, ge=1, alias="COMFY_STEPS")
+    comfy_cfg: float = Field(default=1.0, ge=0, alias="COMFY_CFG")
+    comfy_sampler: str = Field(default="euler", alias="COMFY_SAMPLER")
+    comfy_scheduler: str = Field(default="normal", alias="COMFY_SCHEDULER")
+    comfy_negative_prompt_enabled: bool = Field(default=True, alias="COMFY_NEGATIVE_PROMPT_ENABLED")
+
     # External image generation
     colab_image_api_url: str = Field(default="", alias="COLAB_IMAGE_API_URL")
     colab_image_bypass_password: str = Field(default="", alias="COLAB_IMAGE_BYPASS_PASSWORD")
@@ -217,6 +285,9 @@ class Settings(BaseSettings):
     audio_loop_track_count: int = Field(default=3, alias="AUDIO_LOOP_TRACK_COUNT")
     audio_enable_looping: bool = Field(default=True, alias="AUDIO_ENABLE_LOOPING")
     audio_duration_tolerance_seconds: float = Field(default=5.0, alias="AUDIO_DURATION_TOLERANCE_SECONDS")
+    audio_crossfade_enabled: bool = Field(default=True, alias="AUDIO_CROSSFADE_ENABLED")
+    audio_loudness_enabled: bool = Field(default=True, alias="AUDIO_LOUDNESS_ENABLED")
+    audio_fades_enabled: bool = Field(default=True, alias="AUDIO_FADES_ENABLED")
 
     def get_channel_profile(self) -> dict:
         """Load channel profile from JSON."""

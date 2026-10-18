@@ -11,15 +11,26 @@ def loop_branding(directory, settings, metadata):
     """Draw the two static text marks once without editing any source artwork."""
     w, h = settings.video_width, settings.video_height
     image = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    output = Path(directory) / 'output' / 'loop_branding.png'
+    output.parent.mkdir(parents=True, exist_ok=True)
+    if not getattr(settings, 'branding_enabled', True):
+        # Minimal channels (e.g. static-image only): blank overlay, no text.
+        image.save(output)
+        metadata.update(channel_brand_name=getattr(settings, 'channel_brand_name', CHANNEL),
+                        channel_branding_enabled=False, watermark_enabled=False,
+                        branding_regions=[], branding_overlay_path=str(output),
+                        branding_source='disabled')
+        return output
     draw = ImageDraw.Draw(image)
     regions = []
     scale = h / 1080
     margin = max(8, round(25 * scale))
+    name = getattr(settings, 'channel_brand_name', None) or CHANNEL
     for position, maximum, size, alpha in [('top_right', 310, 30, 235), ('bottom_right', 190, 19, 160)]:
         face = font(round(size * scale))
-        while draw.textlength(CHANNEL, font=face) > maximum * scale and face.size > 8:
+        while draw.textlength(name, font=face) > maximum * scale and face.size > 8:
             face = font(face.size-1)
-        left, top, right, bottom = draw.textbbox((0,0), CHANNEL, font=face, stroke_width=1)
+        left, top, right, bottom = draw.textbbox((0,0), name, font=face, stroke_width=1)
         text_w, text_h = right-left, bottom-top
         cap = draw.textbbox((0, 0), 'H', font=face)
         icon_h = cap[3] - cap[1] if position == 'top_right' else 0
@@ -28,9 +39,9 @@ def loop_branding(directory, settings, metadata):
         total_w = text_w + icon_w + gap
         x, y = w-total_w-margin, margin if position == 'top_right' else h-text_h-margin
         text_x = x + icon_w + gap
-        draw.text((text_x-left,y-top), CHANNEL, font=face, fill=(245,237,223,alpha),
+        draw.text((text_x-left,y-top), name, font=face, fill=(245,237,223,alpha),
                   stroke_width=1, stroke_fill=(20,17,13,alpha))
-        region = dict(position=position, bounds=[x,y,total_w,text_h], text=CHANNEL,
+        region = dict(position=position, bounds=[x,y,total_w,text_h], text=name,
                       text_bounds=[text_x,y,text_w,text_h])
         if icon_h:
             iy = y - top + cap[1]
@@ -42,7 +53,7 @@ def loop_branding(directory, settings, metadata):
     output = Path(directory) / 'output' / 'loop_branding.png'
     output.parent.mkdir(parents=True, exist_ok=True)
     image.save(output)
-    metadata.update(channel_brand_name=CHANNEL, channel_branding_enabled=True,
+    metadata.update(channel_brand_name=name, channel_branding_enabled=True,
                     watermark_enabled=True, branding_regions=regions,
                     branding_overlay_path=str(output), branding_source='existing_typography')
     return output

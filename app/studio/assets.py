@@ -95,8 +95,14 @@ def verify_job_assets(metadata):
         raise ValueError('Job must have exactly one assigned background and thumbnail')
     for kind, record in assets.items():
         alias = 'thumbnail_path' if kind == 'thumbnail' else 'generated_background_path'
-        if metadata.get(alias) and Path(metadata[alias]).resolve() != Path(record['path']).resolve():
-            raise ValueError(f'Job {kind} reference differs from its immutable assignment')
+        if metadata.get(alias):
+            allowed = {Path(record['path']).resolve()}
+            if kind == 'thumbnail':
+                # Deterministic pipeline derivative for YouTube's 2 MB limit;
+                # the assigned source is still hash-verified below.
+                allowed.add(Path(record['path']).with_name(Path(record['path']).stem + '_upload.jpg').resolve())
+            if Path(metadata[alias]).resolve() not in allowed:
+                raise ValueError(f'Job {kind} reference differs from its immutable assignment')
         for key in ('source', 'path'):
             path = Path(record[key])
             if not path.is_file() or asset_sha256(path) != record['sha256']:
@@ -196,15 +202,27 @@ def qc_job(directory, row, metadata):
         check('Audio duration', abs(float(audio.get('duration', duration)) - target) <= 5, f"{audio.get('codec_name')} · {audio.get('channels')} channels")
         if metadata.get('selected_images') is not None:
             check('One background', len(metadata['selected_images']) == 1)
-        if metadata.get('render_architecture') == 'short_clip_copy_loop':
-            regions = metadata.get('branding_regions', [])
-            check('Two distinct branding locations', sorted(r.get('position', '') for r in regions) == ['bottom_right', 'top_right'])
-            check('Channel branding text', len(regions) == 2 and all(r.get('text') == 'Camping With Blues' for r in regions))
-            check('No production visualizer', not any(metadata.get(k) for k in ('waveform_enabled', 'visualizer_enabled', 'subscribe_overlay_enabled', 'song_panel_enabled')))
-            check('Short video encoding only', 0 < metadata.get('short_clip_seconds', 0) <= 8 and not metadata.get('render_segmented'))
+        if metadata.get('render_architecture') in ('short_clip_copy_loop_with_visualizer',
+                                                        'short_clip_copy_loop_with_subscribe'):
             command_file = Path(directory) / 'output' / 'render_commands.json'
             commands = json.loads(command_file.read_text(encoding='utf-8'))
-            check('Long video uses stream copy', all('-c:v' in commands[k] and commands[k][commands[k].index('-c:v')+1] == 'copy' for k in ('loop', 'mux')))
+            piped = commands.get('loop_mux', [])
+            check('Long video uses stream copy',
+                  '-c:v' in piped and piped[piped.index('-c:v')+1] == 'copy' and 'filter_complex' not in ' '.join(piped))
+        if metadata.get('render_architecture') == 'short_clip_copy_loop':
+            branding_on = bool(metadata.get('channel_branding_enabled') or metadata.get('branding_enabled'))
+            regions = metadata.get('branding_regions', [])
+            if branding_on:
+                check('Two distinct branding locations', sorted(r.get('position', '') for r in regions) == ['bottom_right', 'top_right'])
+                check('Channel branding text', len(regions) == 2 and all(r.get('text') == (metadata.get('channel_brand_name') or 'Camping With Blues') and r.get('text') for r in regions))
+            else:
+                check('Two distinct branding locations', len(regions) == 0, 'branding disabled for this channel')
+                check('Channel branding text', len(regions) == 0, 'branding disabled for this channel')
+            check('No production visualizer', not any(metadata.get(k) for k in ('waveform_enabled', 'visualizer_enabled', 'subscribe_overlay_enabled', 'song_panel_enabled')))
+            check('Short video encoding only', 0 < metadata.get('short_clip_seconds', 0) <= 180 and not metadata.get('render_segmented'))
+            command_file = Path(directory) / 'output' / 'render_commands.json'
+            commands = json.loads(command_file.read_text(encoding='utf-8'))
+            check('Long video uses stream copy', all('-c:v' in commands[k] and commands[k][commands[k].index('-c:v')+1] == 'copy' for k in ('loop_mux',) if k in commands) if 'loop_mux' in commands else all('-c:v' in commands[k] and commands[k][commands[k].index('-c:v')+1] == 'copy' for k in ('loop', 'mux')))
         if 'visualizer_enabled' in metadata.get('visualization_config', {}):
             requested = metadata['visualization_config']['visualizer_enabled']
             check('GIF visualizer toggle', bool(metadata.get('visualizer_enabled')) == requested)

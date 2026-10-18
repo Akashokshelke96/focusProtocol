@@ -1,0 +1,9 @@
+# Pod-only extras for the narrated pipeline batch server.
+# Install on the RunPod pod alongside the base project requirements:
+#   pip install -r requirements.txt -r deploy/requirements-pod.txt
+fastapi>=0.110
+uvicorn[standard]>=0.29
+websocket-client>=1.7.0
+kokoro>=0.9.4
+soundfile>=0.12.1
+whisperx>=3.3.1

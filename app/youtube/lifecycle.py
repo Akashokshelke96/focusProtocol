@@ -41,7 +41,7 @@ def finish(service, settings, row, save, wait=True):
                 save(row)
                 return row
             time.sleep(min(settings.youtube_processing_poll_interval, remaining))
-        if row.get('thumbnail_path') and not row.get('thumbnail_uploaded'):
+        if row.get('thumbnail_path') and not row.get('thumbnail_uploaded') and row.get('youtube_status') != 'thumbnail_blocked':
             row['youtube_status'] = 'thumbnail_uploading'
             save(row)
             from app.studio.assets import verify_job_assets
@@ -82,13 +82,20 @@ def finish(service, settings, row, save, wait=True):
         save(row)
     except Exception as error:
         message = f'{type(error).__name__}: verification failed; retry using the saved video ID.'
+        code = None
         if hasattr(error, 'content'):
             try:
                 import json
                 detail = json.loads(error.content).get('error', {})
+                code = detail.get('code')
                 message = f"YouTube {detail.get('code', '')}: {detail.get('message', 'Operation failed')}"
             except (ValueError, TypeError):
                 pass
+        if row.get('youtube_status') == 'thumbnail_uploading' and (code == 403 or 'permission' in message.lower()):
+            row.update(youtube_status='thumbnail_blocked',
+                       last_error='YouTube refused the custom thumbnail (403: channel lacks permission — verify the channel phone number at youtube.com/verify, then retry). The video itself is unaffected.')
+            save(row)
+            return row
         row.update(youtube_status='thumbnail_retry' if row.get('youtube_status') == 'thumbnail_uploading' else 'verification_failed', last_error=message)
         save(row)
     return row

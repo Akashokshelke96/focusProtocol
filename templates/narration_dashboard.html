@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Narration Batch - Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --ink: #17212b;
+            --ink-soft: #243341;
+            --paper: #f4f1eb;
+            --panel: rgba(255, 255, 255, 0.94);
+            --line: #d9d2c7;
+            --accent: #b45f45;
+            --accent-dark: #7f3f31;
+            --muted: #68727a;
+            --success: #3d7a61;
+            --pending: #b8ad9c;
+            --fail: #a33b2f;
+        }
+
+        body {
+            font-family: "Trebuchet MS", "Segoe UI", sans-serif;
+            background: linear-gradient(135deg, #f4f1eb 0%, #e4e8e5 100%);
+            color: var(--ink);
+            min-height: 100vh;
+        }
+
+        header {
+            background: rgba(23, 33, 43, 0.96);
+            padding: 20px;
+            border-bottom: 3px solid var(--accent);
+            box-shadow: 0 4px 18px rgba(23, 33, 43, 0.16);
+        }
+
+        .header-content {
+            max-width: 1200px;
+            margin: 0 auto;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 16px;
+        }
+
+        .logo { font-size: 24px; font-weight: bold; color: #f3d1c5; letter-spacing: 0.02em; }
+        .header-content nav a { color: #cdd6de; text-decoration: none; margin-left: 18px; font-size: 14px; }
+        .header-content nav a:hover { color: #fff; }
+
+        .container { max-width: 1200px; margin: 40px auto; padding: 20px; }
+
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            padding: 28px;
+            margin-bottom: 26px;
+            box-shadow: 0 12px 30px rgba(23, 33, 43, 0.08);
+        }
+
+        .panel h2 {
+            color: var(--accent-dark);
+            margin-bottom: 18px;
+            font-size: 18px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+        }
+
+        textarea, input[type="number"], select {
+            width: 100%;
+            padding: 10px;
+            background: #fffdfa;
+            border: 1px solid var(--line);
+            border-radius: 5px;
+            color: var(--ink);
+            font-size: 14px;
+            font-family: inherit;
+        }
+
+        label { color: var(--accent-dark); font-weight: 500; font-size: 13px; display: block; margin-bottom: 6px; }
+        .row { display: flex; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+        .row > div { flex: 1; min-width: 220px; }
+
+        button {
+            padding: 11px 22px;
+            border: none;
+            border-radius: 5px;
+            background: var(--accent);
+            color: #fff;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background 0.15s ease;
+        }
+        button:hover { background: var(--accent-dark); }
+        button.ghost { background: transparent; color: var(--accent-dark); border: 1px solid var(--line); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+        .batch-list { display: flex; flex-direction: column; gap: 8px; }
+        .batch-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 14px; border: 1px solid var(--line); border-radius: 6px;
+            cursor: pointer; background: #fffdfa; font-size: 14px;
+        }
+        .batch-item:hover { border-color: var(--accent); }
+        .batch-item.active { border-color: var(--accent); background: #fbf1ec; }
+        .batch-item .meta { color: var(--muted); font-size: 12px; }
+
+        .video-card {
+            border: 1px solid var(--line); border-radius: 6px; padding: 14px;
+            margin-bottom: 12px; background: #fffdfa;
+        }
+        .video-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; gap: 12px; }
+        .video-head .title { font-weight: 600; }
+        .video-head .dur { color: var(--muted); font-size: 12px; }
+        .stages { display: flex; flex-wrap: wrap; gap: 6px; }
+        .chip {
+            font-size: 11px; letter-spacing: 0.04em; padding: 4px 8px; border-radius: 12px;
+            border: 1px solid var(--line); color: var(--muted); background: #f7f4ef;
+        }
+        .chip.done { background: #e5f0ea; border-color: #b9d6c7; color: var(--success); }
+        .chip.failed { background: #f7e3e0; border-color: #e0b6ae; color: var(--fail); }
+        .chip.running { background: #fdf0e2; border-color: #eccfa8; color: #a5762f; animation: pulse 1.6s infinite; }
+        @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.55; } }
+        .err { color: var(--fail); font-size: 12px; margin-top: 8px; }
+        .empty { color: var(--muted); font-size: 14px; }
+        .pill {
+            font-size: 12px; padding: 3px 10px; border-radius: 12px; background: #e9e4db; color: var(--ink-soft);
+        }
+        .pill.completed { background: #e5f0ea; color: var(--success); }
+        .pill.completed_with_errors, .pill.failed { background: #f7e3e0; color: var(--fail); }
+        .progress { height: 6px; background: #e9e4db; border-radius: 4px; overflow: hidden; margin-top: 10px; }
+        .progress > span { display: block; height: 100%; background: var(--accent); width: 0%; transition: width 0.3s ease; }
+        .exports { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 8px; }
+        .exports a { font-size: 13px; color: var(--accent-dark); text-decoration: none; border: 1px solid var(--line); padding: 6px 10px; border-radius: 5px; }
+        .exports a:hover { border-color: var(--accent); }
+        .banner { padding: 12px 16px; border-radius: 6px; font-size: 14px; margin-bottom: 18px; }
+        .banner.warn { background: #fdf0e2; border: 1px solid #eccfa8; color: #8a6220; }
+        .banner.error { background: #f7e3e0; border: 1px solid #e0b6ae; color: var(--fail); }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">Narration Batch</div>
+            <nav>
+                <a href="/">Jazz</a>
+                <a href="/narration">Narration</a>
+            </nav>
+        </div>
+    </header>
+
+    <div class="container">
+        <div id="banner"></div>
+
+        <div class="panel">
+            <h2>New Batch</h2>
+            <div class="row">
+                <div style="flex:2">
+                    <label for="topics">Topics (one per line)</label>
+                    <textarea id="topics" rows="4" placeholder="The rise and fall of the Roman roads&#10;How the Silk Road shaped the ancient world"></textarea>
+                </div>
+                <div>
+                    <label for="duration">Duration (minutes)</label>
+                    <input type="number" id="duration" min="1" max="30" value="10">
+                </div>
+            </div>
+            <button id="submit">Submit Batch</button>
+            <button id="refresh" class="ghost">Refresh</button>
+        </div>
+
+        <div class="panel">
+            <h2>Batches</h2>
+            <div id="batches" class="batch-list"><div class="empty">No batches loaded.</div></div>
+        </div>
+
+        <div class="panel">
+            <h2>Selected Batch</h2>
+            <div id="detail"><div class="empty">Select a batch to see per-video progress.</div></div>
+        </div>
+    </div>
+
+    <script>
+        const POD_CONFIGURED = {{ pod_configured | tojson }};
+        const PHASES = ["SCRIPT", "TTS", "ALIGN", "MANIFEST", "IMAGES", "RENDER", "PACKAGE"];
+        const TERMINAL = ["completed", "completed_with_errors", "failed"];
+
+        let selected = null;
+        let pollTimer = null;
+
+        function banner(message, kind) {
+            const el = document.getElementById("banner");
+            el.innerHTML = message ? `<div class="banner ${kind || 'warn'}">${message}</div>` : "";
+        }
+
+        async function api(path, options) {
+            const response = await fetch(path, options);
+            const data = await response.json().catch(() => ({}));
+            if (!response.ok) throw new Error(data.message || ("HTTP " + response.status));
+            return data;
+        }
+
+        async function loadBatches() {
+            try {
+                const data = await api("/api/narration/batches");
+                renderBatches(data.batches || []);
+            } catch (error) {
+                banner("Could not reach the pod batch server: " + error.message, "error");
+                document.getElementById("batches").innerHTML = '<div class="empty">Unavailable.</div>';
+            }
+        }
+
+        function renderBatches(batches) {
+            const container = document.getElementById("batches");
+            if (!batches.length) {
+                container.innerHTML = '<div class="empty">No batches on the pod yet.</div>';
+                return;
+            }
+            container.innerHTML = "";
+            batches.forEach(batch => {
+                const div = document.createElement("div");
+                div.className = "batch-item" + (batch.batch_id === selected ? " active" : "");
+                div.innerHTML = `<div><strong>${batch.batch_id}</strong>
+                    <div class="meta">${batch.videos} videos &middot; phase ${batch.phase || "-"}</div></div>
+                    <span class="pill ${batch.status || ""}">${batch.status || "unknown"}</span>`;
+                div.onclick = () => selectBatch(batch.batch_id);
+                container.appendChild(div);
+            });
+        }
+
+        function chip(label, state) {
+            let cls = "";
+            if (state === "done") cls = "done";
+            else if (state === "failed") cls = "failed";
+            else if (state === "running") cls = "running";
+            return `<span class="chip ${cls}">${label}</span>`;
+        }
+
+        function currentPhase(state) {
+            return state.phase;
+        }
+
+        function renderDetail(state) {
+            const detail = document.getElementById("detail");
+            const videos = state.videos || [];
+            const doneStages = videos.reduce((acc, v) => acc + Object.values(v.stages || {}).filter(s => s === "done").length, 0);
+            const totalStages = Math.max(1, videos.length * PHASES.length);
+            const pct = Math.round((doneStages / totalStages) * 100);
+
+            let html = `<div class="video-head"><div class="title">Batch ${state.batch_id}</div>
+                <span class="pill ${state.status || ""}">${state.status || "unknown"}</span></div>
+                <div class="meta" style="color:var(--muted);font-size:12px">
+                    phase ${currentPhase(state) || "-"} &middot; elapsed ${state.elapsed_seconds ?? "-"}s
+                </div>
+                <div class="progress"><span style="width:${pct}%"></span></div>`;
+
+            videos.forEach(video => {
+                const stages = PHASES.map(phase => {
+                    const s = (video.stages || {})[phase] || "pending";
+                    return chip(phase, s);
+                }).join("");
+                const errors = video.error ? `<div class="err">${video.error}</div>` : "";
+                html += `<div class="video-card" style="margin-top:12px">
+                    <div class="video-head"><div class="title">${video.title || video.topic || video.id}</div>
+                    <span class="dur">${video.duration_minutes || "?"} min</span></div>
+                    <div class="stages">${stages}</div>${errors}</div>`;
+            });
+            detail.innerHTML = html;
+            loadExports(state.batch_id);
+        }
+
+        async function loadExports(batchId) {
+            try {
+                const data = await api("/api/narration/exports/" + batchId);
+                if (!data.files || !data.files.length) return;
+                const links = data.files.map(name =>
+                    `<a href="/api/narration/download/${batchId}/${name}">${name}</a>`).join("");
+                document.getElementById("detail").insertAdjacentHTML("beforeend",
+                    `<div class="exports">${links}</div>`);
+            } catch (error) { /* exports are optional */ }
+        }
+
+        async function selectBatch(batchId) {
+            selected = batchId;
+            clearTimeout(pollTimer);
+            try {
+                const state = await api("/api/narration/batch/" + batchId);
+                renderDetail(state);
+                loadBatches();
+                if (!TERMINAL.includes(state.status)) {
+                    pollTimer = setTimeout(() => selectBatch(batchId), 3000);
+                }
+            } catch (error) {
+                banner("Failed to load batch " + batchId + ": " + error.message, "error");
+            }
+        }
+
+        async function submitBatch() {
+            const topics = document.getElementById("topics").value
+                .split("\n").map(t => t.trim()).filter(Boolean);
+            if (!topics.length) { banner("Enter at least one topic.", "warn"); return; }
+            const duration = parseFloat(document.getElementById("duration").value) || 10;
+            const button = document.getElementById("submit");
+            button.disabled = true;
+            try {
+                const data = await api("/api/narration/batch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ topics, duration_minutes: duration })
+                });
+                banner("Submitted batch " + data.batch_id + " (" + (data.videos || topics.length) + " videos).", "warn");
+                document.getElementById("topics").value = "";
+                await loadBatches();
+                selectBatch(data.batch_id);
+            } catch (error) {
+                banner("Submit failed: " + error.message, "error");
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        document.getElementById("submit").onclick = submitBatch;
+        document.getElementById("refresh").onclick = () => { loadBatches(); if (selected) selectBatch(selected); };
+
+        if (!POD_CONFIGURED) {
+            banner("POD_BATCH_URL is not set. Configure it in .env to submit or view batches.", "warn");
+        }
+        loadBatches();
+        setInterval(loadBatches, 15000);
+    </script>
+</body>
+</html>

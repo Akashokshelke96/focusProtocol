@@ -97,6 +97,34 @@ def _fallback(profile, channel, history, concept=''):
                 music_direction=f'{", ".join(profile.get("genres", []))}; {profile["listening_intent"]}', source='local_fallback')
 
 
+def next_series_volume(channel_id):
+    """Atomically reserve the next sequential volume for a channel title series."""
+    from app.studio.store import StudioStore
+    with StudioStore().transaction() as state:
+        row = next(c for c in state['channels'] if c['id'] == channel_id)
+        vol = int(row.get('series_next_vol') or 1)
+        row['series_next_vol'] = vol + 1
+    return vol
+
+
+def _apply_series_format(plan, channel, minutes):
+    """Fixed per-channel title series (e.g. Dark Satin volumes); leaves others untouched."""
+    template = (channel or {}).get('series_title_template', '')
+    if not template:
+        return
+    vol = next_series_volume(channel['id'])
+    values = dict(vol=vol, minutes=minutes, channel=channel.get('name', ''))
+    title = template.format(**values)[:100]
+    description = (channel.get('series_description_template') or '').format(**values)
+    tags = [t for t in (channel.get('series_tags') or []) if isinstance(t, str) and t][:10]
+    hashtags = [h for h in (channel.get('series_hashtags') or []) if isinstance(h, str) and h][:5]
+    plan.update(concept=f'Dark Romance Vol. {vol:02d}', theme=plan.get('theme', ''),
+                mood=plan.get('mood', ''), title=title, title_candidates=[title],
+                description=description, primary_keywords=['dark romance playlist'],
+                tags=tags, hashtags=hashtags,
+                thumbnail_concept=f'Dark Romance Vol. {vol:02d}')
+
+
 def create_plan(llm, profile, channel, minutes, history, concept=''):
     history = history_records(history)
     error, plan, calls = None, None, 0
@@ -125,6 +153,7 @@ def create_plan(llm, profile, channel, minutes, history, concept=''):
         get_logger('studio.content').warning('Editorial LLM unavailable or invalid; using marked local fallback: %s', error)
         plan = _fallback(profile, channel, history, concept)
     plan.update(provider_error=error, llm_calls=calls, metadata_version=2)
+    _apply_series_format(plan, channel, minutes)
     plan['scene_structure'] = [dict(start_seconds=0, duration_seconds=minutes*60, visual=plan['visual_direction'])]
     plan['narration'] = None
     plan['keywords'] = plan['primary_keywords']  # Existing planning consumers.

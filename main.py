@@ -43,6 +43,35 @@ def main():
     jazz_parser.add_argument("--count", type=int, default=1, help="Number of videos to generate (default 1)")
     jazz_parser.add_argument("--test", action="store_true", help="Use test duration (3 min)")
 
+    # Narration command (RunPod TTS + WhisperX + ComfyUI)
+    narration_parser = subparsers.add_parser(
+        "narration", help="Generate a narrated long-form video from a topic")
+    narration_parser.add_argument("--topic", required=True, help="Video topic or idea")
+    narration_parser.add_argument("--duration", type=float, default=None,
+                                  help="Duration in minutes (default from settings)")
+    narration_parser.add_argument("--count", type=int, default=1, help="Number of videos to generate")
+    narration_parser.add_argument("--yes", action="store_true",
+                                  help="Auto-approve the script and skip the manual gate")
+
+    narration_approve_parser = subparsers.add_parser(
+        "narration-approve", help="Approve a saved narration script and resume the job")
+    narration_approve_parser.add_argument("job_id", help="Job ID to approve and resume")
+
+    # Narration batch command (drives the pod batch server from the local machine)
+    batch_parser = subparsers.add_parser(
+        "narration-batch",
+        help="Submit/wait/download a narrated batch on the RunPod pod batch server")
+    batch_parser.add_argument("--topics", help="Comma-separated topics (pod LLM writes the scripts)")
+    batch_parser.add_argument("--items", help="JSON file: list of items or {items:[...]}")
+    batch_parser.add_argument("--scripts", help="Directory of approved script.json files")
+    batch_parser.add_argument("--duration", type=float, default=None, help="Duration in minutes")
+    batch_parser.add_argument("--batch-id", default="", help="Explicit batch id to create/resume")
+    batch_parser.add_argument("--poll", type=float, default=None, help="Poll interval seconds")
+    batch_parser.add_argument("--wait", action="store_true", help="Poll until the batch finishes")
+    batch_parser.add_argument("--download", help="Download finished exports into this directory")
+    batch_parser.add_argument("--status", help="Print status for an existing batch id")
+    batch_parser.add_argument("--list", action="store_true", help="List batches on the pod")
+
     # Resume command
     resume_parser = subparsers.add_parser("resume", help="Resume a job")
     resume_parser.add_argument("job_id", help="Job ID to resume")
@@ -78,6 +107,12 @@ def main():
         return cmd_generate(args)
     elif args.command == "jazz":
         return cmd_jazz(args)
+    elif args.command == "narration":
+        return cmd_narration(args)
+    elif args.command == "narration-approve":
+        return cmd_narration_approve(args)
+    elif args.command == "narration-batch":
+        return cmd_narration_batch(args)
     elif args.command == "resume":
         return cmd_resume(args)
     elif args.command == "list-jobs":
@@ -200,6 +235,68 @@ def cmd_jazz(args):
 
     except Exception as e:
         logger.error(f"Jazz generation failed: {e}", exc_info=True)
+        return 1
+
+
+def cmd_narration(args):
+    """Handle narrated video generation command."""
+    settings = get_settings()
+    if not settings.gemini_api_key and settings.llm_provider != 'omniroute':
+        logger.error("Missing GEMINI_API_KEY or OPENROUTER_API_KEY")
+        logger.error("Please set this in .env file")
+        return 1
+    if not settings.narration_remote_enabled:
+        logger.error("NARRATION_REMOTE_ENABLED is false; the narrated pipeline needs RunPod TTS/WhisperX/ComfyUI")
+        return 1
+
+    logger.info("Starting narrated video generation...")
+    logger.info("Topic: %s", args.topic)
+    logger.info("Duration: %s minutes", args.duration or settings.narration_target_duration_minutes)
+    logger.info("Manual script approval: %s", "skipped (--yes)" if args.yes else "required")
+
+    try:
+        from app.narration.orchestrator import NarrationOrchestrator
+        orchestrator = NarrationOrchestrator(settings)
+        success = orchestrator.run(
+            topic=args.topic,
+            duration_minutes=args.duration,
+            auto_approve=args.yes,
+            count=args.count,
+        )
+        return 0 if success else 1
+    except Exception as e:
+        logger.error(f"Narration generation failed: {e}", exc_info=True)
+        return 1
+
+
+def cmd_narration_approve(args):
+    """Approve a saved script and resume its job from the remote stages."""
+    from pathlib import Path
+    from app.narration.script_generator import ScriptGenerator
+    settings = get_settings()
+    job_dir = Path("jobs") / args.job_id
+    plan = ScriptGenerator.load(job_dir)
+    if not plan:
+        logger.error("No script found for job %s", args.job_id)
+        return 1
+    plan.approved = True
+    ScriptGenerator(settings, None).save(plan, job_dir)
+    logger.info("Script approved for job %s; resuming...", args.job_id)
+    try:
+        from app.narration.orchestrator import NarrationOrchestrator
+        return 0 if NarrationOrchestrator(settings).resume(args.job_id) else 1
+    except Exception as e:
+        logger.error(f"Narration resume failed: {e}", exc_info=True)
+        return 1
+
+
+def cmd_narration_batch(args):
+    """Drive the pod batch server (submit / wait / download / status)."""
+    try:
+        from app.narration.batch_cli import run as run_batch
+        return run_batch(args)
+    except Exception as e:
+        logger.error(f"Narration batch failed: {e}", exc_info=True)
         return 1
 
 

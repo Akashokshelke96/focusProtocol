@@ -213,8 +213,6 @@ class YouTubeService:
         snippet.update({'title': metadata['title'], 'description': metadata.get('description', ''),
                    'tags': list(metadata.get('tags', [])), 'categoryId': str(metadata.get('category', self.settings.youtube_category))}
         )
-        if metadata.get('sha256'):
-            snippet['tags'].append('engine-sha256-' + metadata['sha256'])
         return self.client().videos().update(part='snippet', body={'id': video_id, 'snippet': snippet}).execute(num_retries=self.settings.max_retries)
 
     def update_schedule(self, video_id, scheduled):

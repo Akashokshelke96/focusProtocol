@@ -164,14 +164,17 @@ def apply_tracklist(metadata):
     hashtags = plan.get('hashtags', metadata.get('hashtags', []))
     timeline = metadata.get('audio_track_timeline', [])
     aliases = plan.get('session_titles', metadata.get('session_titles', []))
-    use_aliases = len(aliases) >= len(timeline)
+    # Editorial names only, always: cycle the session labels across every
+    # timeline track. Raw source filenames must never reach a description.
+    if not aliases:
+        metadata.update(tracklist_source='unavailable')
+        return
     chapters = []
     for i, track in enumerate(timeline):
         start = float(track['start_seconds'])
         if not 0 <= start < metadata['target_duration_seconds']:
             continue
-        name = aliases[i] if use_aliases else Path(track['filename']).stem
-        name = re.sub(r'[<>\r\n]', '', name)[:80]
+        name = re.sub(r'[<>\r\n]', '', aliases[i % len(aliases)])[:80]
         chapters.append(dict(start_seconds=start, title=name, source_filename=track['filename']))
     lines = []
     for chapter in chapters:
@@ -181,22 +184,11 @@ def apply_tracklist(metadata):
     block = '\n\nTRACKLIST & TIMESTAMPS\n' + '\n'.join(lines) if lines else ''
     if lines:
         block += '\nTimings follow the actual mix, including crossfades.'
-        if use_aliases:
-            block += ' Session labels are editorial, not original song credits.'
+        block += ' Session labels are editorial, not original song credits.'
     suffix = '\n\n' + ' '.join(hashtags)
-    # Reserve actual tracklist/hashtags first; trim prose only at paragraph boundaries.
-    budget = 5000 - len((block + suffix).encode('utf-8'))
-    while len(base.encode('utf-8')) > budget and '\n\n' in base:
-        paragraphs = base.split('\n\n')
-        del paragraphs[-2 if len(paragraphs) > 2 else -1]
-        base = '\n\n'.join(paragraphs)
-    if budget < 650 or len(base.encode('utf-8')) > budget:
-        # Extremely long lists remain accurate in metadata; never invent or truncate a timestamp.
-        block = ''
-        base = plan.get('description', metadata.get('editorial_description', ''))
-    if 'SESSION NOTES' in base and block:
-        description = base.replace('SESSION NOTES', block.strip() + '\n\nSESSION NOTES', 1) + suffix
-    else:
-        description = base + block + suffix
+    # No tracklist block in public descriptions: chapters/timestamps stay in
+    # metadata only (session_chapters below). Prose + hashtags ship as-is.
+    block = ''
+    description = base + suffix
     metadata.update(youtube_description=description, session_chapters=chapters,
                     tracklist_source='audio_assembly' if chapters else 'unavailable')

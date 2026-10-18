@@ -19,6 +19,14 @@ def files(settings):
                   key=lambda p: p.name.lower()) if path.is_dir() else []
 
 
+def has_asset(settings):
+    """Cheap check (no probe) whether a subscribe file is selectable."""
+    try:
+        return bool(files(settings))
+    except OSError:
+        return False
+
+
 def schedule(target, interval, start=None):
     start = interval if start is None else start
     return [start + i * interval for i in range(max(0, math.ceil((target-start)/interval)))]
@@ -29,14 +37,11 @@ def record_fallback(metadata, reason):
     metadata.update(subscribe_overlay_enabled=False, subscribe_overlay_fallback=str(reason)[-2000:])
 
 
-def prepare(settings, target, ffmpeg, ffprobe, metadata):
+def prepare(settings, target, ffmpeg, ffprobe, metadata, clip_seconds=None):
     metadata['subscribe_overlay_enabled'] = False
     if not settings.subscribe_overlay_enabled:
         return None
-    starts = schedule(target, settings.subscribe_overlay_interval_seconds,
-                      settings.subscribe_overlay_start_after_seconds)
-    if not starts:
-        return None
+    starts = None
     try:
         candidates = files(settings)
         selected = settings.subscribe_overlay_file
@@ -72,8 +77,22 @@ def prepare(settings, target, ffmpeg, ffprobe, metadata):
         factor = min(w*settings.subscribe_overlay_width_ratio/source_w,
                      (h-bottom)/source_h, (w-right)/source_w)
         ow, oh = max(1, round(source_w*factor)), max(1, round(source_h*factor))
+        if clip_seconds is not None:
+            # Baked at the START of the short clip; the packet-copy loop
+            # repeats it every clip_seconds in the final video. Start (not
+            # end) is load-bearing: a late trim window makes the overlay's
+            # frame-sync buffer every main frame until the window (~8 GB on
+            # a 180s clip), while a t=0 window buffers nothing.
+            duration = min(duration, clip_seconds)
+            starts = [0.0]
+        else:
+            starts = schedule(target, settings.subscribe_overlay_interval_seconds,
+                              settings.subscribe_overlay_start_after_seconds)
+            if not starts:
+                return None
+            duration = min(duration, settings.subscribe_overlay_interval_seconds)
         result = dict(path=str(path), decoder=decoder, starts=starts, crop=crop,
-                      duration=min(duration, settings.subscribe_overlay_interval_seconds),
+                      duration=duration,
                       width=ow, height=oh, x=w-ow-right, y=h-oh-bottom)
         metadata.update(subscribe_overlay_enabled=True, subscribe_overlay_file=str(path),
                         subscribe_overlay_starts=starts, subscribe_animation_duration=duration,

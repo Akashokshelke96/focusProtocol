@@ -60,6 +60,14 @@ class GeminiProvider(LLMProvider):
             logger.error(f"Failed to parse JSON: {response[:200]}...")
             raise ValueError(f"Invalid JSON from LLM: {str(e)}")
 
+    def generate_json(self, prompt: str) -> Any:
+        """Run a raw prompt and return its parsed JSON payload.
+
+        Shared entry point for sibling pipelines (e.g. the narrated pipeline)
+        that need structured LLM output without a dedicated method.
+        """
+        return self._extract_json(self._generate_with_retry(prompt))
+
     def _generate_with_retry(self, prompt: str, max_retries: int = 3) -> str:
         """Generate content with retry logic."""
         for attempt in range(max_retries):

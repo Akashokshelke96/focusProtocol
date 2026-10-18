@@ -39,10 +39,10 @@ def main():
     try:
         try:
             from waitress import serve
-            serve(app, host='127.0.0.1', port=port, threads=8)
+            serve(app, host='0.0.0.0', port=port, threads=8)
         except ImportError:
             logger.warning("Waitress is unavailable; using Flask's local server")
-            app.run(debug=False, host='127.0.0.1', port=port, use_reloader=False)
+            app.run(debug=False, host='0.0.0.0', port=port, use_reloader=False)
     except KeyboardInterrupt:
         print("\n\nShutting down...")
         sys.exit(0)
