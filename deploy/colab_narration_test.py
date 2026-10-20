@@ -22,6 +22,9 @@ import time
 import urllib.request
 from pathlib import Path
 
+# A stale QUALITY_PRESET would override the 768x432 test dimensions.
+os.environ.pop("QUALITY_PRESET", None)
+
 REPO = "https://github.com/Akashokshelke96/focusProtocol.git"
 PROJECT = Path("/content/focusProtocol")
 COMFY = Path("/content/ComfyUI")
@@ -196,6 +199,10 @@ if process.returncode:
     logs = sorted((PROJECT / "jobs").glob("app_*.log"), key=lambda p: p.stat().st_mtime)
     if logs:
         print(logs[-1].read_text(encoding="utf-8", errors="replace")[-4000:])
+    comfy_log = Path("/content/comfyui.log")
+    if comfy_log.is_file():
+        print("ComfyUI log tail:")
+        print(comfy_log.read_text(encoding="utf-8", errors="replace")[-3000:])
     raise SystemExit(process.returncode)
 
 # 11) Output -----------------------------------------------------------------
