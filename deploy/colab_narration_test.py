@@ -60,7 +60,7 @@ if not (PROJECT / ".git").is_dir():
         shutil.rmtree(PROJECT)
     run(["git", "clone", "--depth", "1", "--filter=blob:none", "--sparse", REPO, str(PROJECT)])
     run(["git", "-C", str(PROJECT), "sparse-checkout", "set",
-         "app", "workflows", "main.py", "requirements.txt"])
+         "app", "workflows"])
 else:
     run(["git", "-C", str(PROJECT), "pull", "--ff-only"])
 
