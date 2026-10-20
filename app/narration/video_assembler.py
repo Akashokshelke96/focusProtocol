@@ -91,10 +91,10 @@ class VideoAssembler:
         list_path = work_dir / "concat.txt"
         lines = []
         for scene in scenes:
-            lines.append(f"file '{Path(scene.image_path).as_posix()}'")
+            lines.append(f"file '{Path(scene.image_path).resolve().as_posix()}'")
             lines.append(f"duration {max(0.04, scene.duration):.3f}")
         # Repeat the final image so the concat demuxer honors its duration.
-        lines.append(f"file '{Path(scenes[-1].image_path).as_posix()}'")
+        lines.append(f"file '{Path(scenes[-1].image_path).resolve().as_posix()}'")
         list_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
         visual = work_dir / "visual.mp4"
@@ -152,7 +152,7 @@ class VideoAssembler:
 
         list_path = work_dir / "clips.txt"
         list_path.write_text(
-            "\n".join(f"file '{p.as_posix()}'" for p in clip_paths) + "\n", encoding="utf-8")
+            "\n".join(f"file '{p.resolve().as_posix()}'" for p in clip_paths) + "\n", encoding="utf-8")
         visual = work_dir / "visual.mp4"
         self._run([str(self.ffmpeg), "-y", "-f", "concat", "-safe", "0", "-i", str(list_path),
                    "-c", "copy", str(visual)])
