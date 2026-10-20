@@ -87,7 +87,16 @@ run([UV, "pip", "install", "--python", str(VENV_PY),
      "pydantic", "pydantic-settings", "python-dotenv", "requests", "pillow",
      "numpy", "scipy", "httpx", "websocket-client", "tqdm", "psutil",
      "imageio-ffmpeg", "soundfile", "kokoro"])
-run([str(VENV_PY), "-m", "spacy", "download", "en_core_web_sm"], check=False)
+# uv venvs omit pip, so install it before `spacy download`.
+run([UV, "pip", "install", "--python", str(VENV_PY), "pip"])
+try:
+    run([str(VENV_PY), "-m", "spacy", "download", "en_core_web_sm"])
+except subprocess.CalledProcessError:
+    run([UV, "pip", "install", "--python", str(VENV_PY),
+         "https://github.com/explosion/spacy-models/releases/download/"
+         "en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl"])
+run([str(VENV_PY), "-c",
+     "import spacy; spacy.load('en_core_web_sm'); print('spaCy model OK')"])
 
 # 5) ComfyUI + SD1.5 checkpoint ---------------------------------------------
 if not (COMFY / "main.py").is_file():
