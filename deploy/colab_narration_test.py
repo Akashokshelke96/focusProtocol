@@ -149,6 +149,7 @@ env_values = {
     "VIDEO_FPS": "15",
     "COMFY_BASE_URL": COMFY_URL,
     "COMFY_WORKFLOW_PATH": "workflows/colab_sd15_api.json",
+    "COMFY_TIMEOUT_SECONDS": "1800",
     "COMFY_STEPS": "20",
     "COMFY_CFG": "7.0",
     "COMFY_SAMPLER": "euler",
