@@ -87,6 +87,7 @@ run([UV, "pip", "install", "--python", str(VENV_PY),
      "pydantic", "pydantic-settings", "python-dotenv", "requests", "pillow",
      "numpy", "scipy", "httpx", "websocket-client", "tqdm", "psutil",
      "imageio-ffmpeg", "soundfile", "kokoro"])
+run([str(VENV_PY), "-m", "spacy", "download", "en_core_web_sm"], check=False)
 
 # 5) ComfyUI + SD1.5 checkpoint ---------------------------------------------
 if not (COMFY / "main.py").is_file():
