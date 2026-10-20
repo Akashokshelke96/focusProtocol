@@ -129,6 +129,8 @@ env_values = {
     "NARRATION_MIN_SCENES": "16",
     "NARRATION_MAX_SCENES": "24",
     "NARRATION_SCENE_SECONDS": "2.5",
+    "NARRATION_SCRIPT_FALLBACK": "true",
+    "NARRATION_MAX_RETRIES": "1",
     "NARRATION_TARGET_DURATION_MINUTES": "2",
     "NARRATION_MOTION": "none",
     "NARRATION_EXPORT_ENABLED": "true",
@@ -143,18 +145,26 @@ env_values = {
     "COMFY_SCHEDULER": "normal",
     "COMFY_NEGATIVE_PROMPT_ENABLED": "true",
     "LLM_PROVIDER": "gemini",
-    "GEMINI_MODEL": "gemini-2.5-flash",
+    "GEMINI_MODEL": "gemini-flash-latest",
     "GEMINI_API_KEY": GEMINI_API_KEY.strip(),
 }
 (PROJECT / ".env").write_text("\n".join(f"{k}={v}" for k, v in env_values.items()) + "\n", encoding="utf-8")
 
-# 9) Render one job ----------------------------------------------------------
+# 9) Preflight: make sure the venv can import everything --------------------
+run([str(VENV_PY), "-c",
+     "import pydantic, pydantic_settings, requests, torch, kokoro, soundfile; "
+     "import app.config.settings, app.narration.orchestrator; print('Imports OK')"],
+    cwd=str(PROJECT))
+
+# 10) Render one job ---------------------------------------------------------
 runner = PROJECT / "run_narration_test.py"
 runner.write_text(textwrap.dedent(f"""
     import sys
+    from app.config.logging_config import setup_logging
     from app.config.settings import get_settings
     from app.narration.orchestrator import NarrationOrchestrator
 
+    setup_logging()
     settings = get_settings()
     print("Profile:", settings.video_width, "x", settings.video_height, settings.video_fps, "fps",
           "scenes", settings.narration_min_scenes, "-", settings.narration_max_scenes,
@@ -164,10 +174,20 @@ runner.write_text(textwrap.dedent(f"""
     print("RESULT", ok, flush=True)
     sys.exit(0 if ok else 1)
 """), encoding="utf-8")
-run([str(VENV_PY), str(runner)], cwd=str(PROJECT),
-    env={**os.environ, "PYTHONUNBUFFERED": "1", "HF_HUB_DISABLE_TELEMETRY": "1"})
+child_env = {**os.environ, **env_values,
+             "PYTHONUNBUFFERED": "1", "HF_HUB_DISABLE_TELEMETRY": "1"}
+process = subprocess.run([str(VENV_PY), str(runner)], cwd=str(PROJECT), env=child_env)
+if process.returncode:
+    print("Narration failed. Latest job metadata + log:")
+    metas = sorted((PROJECT / "jobs").glob("*/metadata.json"), key=lambda p: p.stat().st_mtime)
+    if metas:
+        print(metas[-1].read_text(encoding="utf-8", errors="replace")[-3000:])
+    logs = sorted((PROJECT / "jobs").glob("app_*.log"), key=lambda p: p.stat().st_mtime)
+    if logs:
+        print(logs[-1].read_text(encoding="utf-8", errors="replace")[-4000:])
+    raise SystemExit(process.returncode)
 
-# 10) Output -----------------------------------------------------------------
+# 11) Output -----------------------------------------------------------------
 videos = sorted((PROJECT / "jobs").glob("*/output/rendered.mp4"), key=lambda p: p.stat().st_mtime)
 if not videos:
     videos = sorted((PROJECT / "output").rglob("*.mp4"), key=lambda p: p.stat().st_mtime)

@@ -17,7 +17,7 @@ class Settings(BaseSettings):
 
     # API Keys
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
-    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
+    gemini_model: str = Field(default="gemini-flash-latest", alias="GEMINI_MODEL")
     pexels_api_key: str = Field(default="", alias="PEXELS_API_KEY")
     acemusic_api_key: str = Field(default="", alias="ACEMUSIC_API_KEY")
 
@@ -216,6 +216,7 @@ class Settings(BaseSettings):
     narration_max_scenes: int = Field(default=260, ge=1, alias="NARRATION_MAX_SCENES")
     narration_manifest_batch_size: int = Field(default=20, ge=1, le=60, alias="NARRATION_MANIFEST_BATCH_SIZE")
     narration_max_retries: int = Field(default=3, ge=0, le=10, alias="NARRATION_MAX_RETRIES")
+    narration_script_fallback: bool = Field(default=False, alias="NARRATION_SCRIPT_FALLBACK")
     narration_style_prefix: str = Field(
         default=("Flat 2D hand-drawn stickman story cartoon: characters have large round white heads, simple "
                  "dot eyes and small noses, messy brown hair, and thin line-drawn bodies wearing simple colored "
