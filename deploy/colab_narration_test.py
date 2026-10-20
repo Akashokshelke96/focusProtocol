@@ -35,7 +35,7 @@ GEMINI_API_KEY = ""  # optional if set as a Colab Secret / env var
 
 def run(cmd, **kwargs):
     print("$", cmd if isinstance(cmd, str) else " ".join(map(str, cmd)), flush=True)
-    subprocess.run(cmd, check=True, **kwargs)
+    subprocess.run(cmd, check=kwargs.pop("check", True), **kwargs)
 
 
 # 1) Resolve the Gemini key --------------------------------------------------
