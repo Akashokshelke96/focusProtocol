@@ -207,7 +207,7 @@ class NarrationOrchestrator:
                          image_dir: Path, metadata: dict) -> None:
         requests_map: dict[str, dict] = {}
         for scene in manifest.scenes:
-            positive = compose_positive(manifest.style_prefix, scene.prompt)
+            positive = compose_positive(manifest.style_prefix, scene.prompt, manifest.characters)
             negative = manifest.negative_prompt if self.settings.comfy_negative_prompt_enabled else ""
             workflow, seed = client.build_prompt(
                 positive, negative, self.settings.video_width, self.settings.video_height,
@@ -254,7 +254,7 @@ class NarrationOrchestrator:
 
     def _generate_thumbnail(self, job, manifest: SceneManifest, client: ComfyUIClient,
                             thumbnail_dir: Path) -> Optional[Path]:
-        positive = compose_positive(manifest.style_prefix, manifest.thumbnail_prompt)
+        positive = compose_positive(manifest.style_prefix, manifest.thumbnail_prompt, manifest.characters)
         negative = manifest.negative_prompt if self.settings.comfy_negative_prompt_enabled else ""
         workflow, _seed = client.build_prompt(
             positive, negative, self.settings.video_width, self.settings.video_height,

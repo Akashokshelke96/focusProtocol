@@ -22,13 +22,14 @@ from app.narration.text import clean
 logger = get_logger("narration.manifest")
 
 
-def compose_positive(style_prefix: str, prompt: str) -> str:
-    """Combine the universal style prefix with a scene prompt."""
-    prefix = (style_prefix or "").strip().rstrip(".")
-    body = (prompt or "").strip().rstrip(".")
-    if prefix and body:
-        return f"{prefix}. {body}"
-    return prefix or body
+def compose_positive(style_prefix: str, prompt: str, characters: str = "") -> str:
+    """Combine the style prefix, recurring cast, and scene prompt."""
+    parts = [
+        (style_prefix or "").strip().rstrip("."),
+        (characters or "").strip().rstrip("."),
+        (prompt or "").strip().rstrip("."),
+    ]
+    return ". ".join(part for part in parts if part)
 
 
 class SceneManifestBuilder:
@@ -60,6 +61,7 @@ class SceneManifestBuilder:
             target_duration_seconds=round(duration_seconds, 3),
             scene_seconds=self.settings.narration_scene_seconds,
             style_prefix=self.settings.narration_style_prefix,
+            characters=self.settings.narration_characters,
             negative_prompt=self.settings.narration_negative_prompt,
             alignment_source=alignment.source,
             thumbnail_prompt=thumbnail_prompt,
@@ -112,6 +114,7 @@ class SceneManifestBuilder:
     def _ask_for_prompts(self, beats: list[dict], topic: str) -> dict[int, str]:
         prompt = NARRATION_MANIFEST_BATCH_PROMPT.format(
             style_prefix=self.settings.narration_style_prefix,
+            characters=self.settings.narration_characters,
             beats=json.dumps(beats, ensure_ascii=False),
         )
         try:
@@ -146,6 +149,7 @@ class SceneManifestBuilder:
         prompt = NARRATION_THUMBNAIL_PROMPT.format(
             title=script_plan.title, topic=script_plan.topic,
             style_prefix=self.settings.narration_style_prefix,
+            characters=self.settings.narration_characters,
         )
         try:
             data = self.llm.generate_json(prompt)

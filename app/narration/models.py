@@ -69,6 +69,7 @@ class SceneManifest(BaseModel):
     target_duration_seconds: float = 0.0
     scene_seconds: float = 2.5
     style_prefix: str = ""
+    characters: str = ""
     negative_prompt: str = ""
     alignment_source: str = "estimated"
     thumbnail_prompt: str = ""

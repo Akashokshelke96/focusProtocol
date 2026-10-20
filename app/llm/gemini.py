@@ -148,21 +148,28 @@ class GeminiProvider(LLMProvider):
         return data["choices"][0]["message"]["content"]
 
     def _call_gemini(self, prompt: str) -> str:
-        """Call Google Gemini API directly."""
-        import google.generativeai as genai
-
-        genai.configure(api_key=self.api_key)
-        model = genai.GenerativeModel("gemini-1.5-flash")
-
-        response = model.generate_content(
-            prompt,
-            generation_config={
-                "temperature": 0.7,
-                "top_p": 0.9,
-                "max_output_tokens": 8000,
+        """Call Google Gemini REST API directly (no SDK dependency)."""
+        model = self.settings.gemini_model or "gemini-2.5-flash"
+        response = requests.post(
+            f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent",
+            headers={"Content-Type": "application/json", "x-goog-api-key": self.api_key},
+            json={
+                "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+                "generationConfig": {
+                    "temperature": 0.7,
+                    "topP": 0.9,
+                    "maxOutputTokens": 8000,
+                },
             },
+            timeout=90,
         )
-        return response.text
+        response.raise_for_status()
+        candidate = (response.json().get("candidates") or [{}])[0]
+        parts = candidate.get("content", {}).get("parts", [])
+        text = "".join(part.get("text", "") for part in parts if not part.get("thought"))
+        if not text:
+            raise ValueError(f"Gemini returned no text ({candidate.get('finishReason', 'unknown')})")
+        return text
 
     def generate_content_plan(
         self,

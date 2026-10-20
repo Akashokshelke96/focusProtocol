@@ -17,6 +17,7 @@ class Settings(BaseSettings):
 
     # API Keys
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    gemini_model: str = Field(default="gemini-2.5-flash", alias="GEMINI_MODEL")
     pexels_api_key: str = Field(default="", alias="PEXELS_API_KEY")
     acemusic_api_key: str = Field(default="", alias="ACEMUSIC_API_KEY")
 
@@ -216,13 +217,26 @@ class Settings(BaseSettings):
     narration_manifest_batch_size: int = Field(default=20, ge=1, le=60, alias="NARRATION_MANIFEST_BATCH_SIZE")
     narration_max_retries: int = Field(default=3, ge=0, le=10, alias="NARRATION_MAX_RETRIES")
     narration_style_prefix: str = Field(
-        default=("Cinematic documentary still, photorealistic, 35mm film, shallow depth of field, "
-                 "volumetric natural light, muted earth-toned color grade, ultra detailed, 16:9, no text, no watermark"),
+        default=("Flat 2D hand-drawn stickman story cartoon: characters have large round white heads, simple "
+                 "dot eyes and small noses, messy brown hair, and thin line-drawn bodies wearing simple colored "
+                 "clothing in a muted warm palette; environments are fully illustrated with layered hand-drawn "
+                 "line shading, dark navy night skies dotted with stars, grey rock and cave textures, silhouetted "
+                 "bushes and trees, and warm orange firelight with soft ambient glow; thick clean black outlines, "
+                 "flat fills with subtle shading, cinematic warm-versus-cool color contrast, 16:9, no text"),
         alias="NARRATION_STYLE_PREFIX")
+    narration_characters: str = Field(
+        default=("The same two recurring characters must appear and be drawn identically in every scene: a man "
+                 "with messy short brown hair wearing a brown fur tunic, and a woman with a brown hair bun wearing "
+                 "a long brown dress; both have large round white heads, simple dot eyes and thin line-drawn limbs"),
+        alias="NARRATION_CHARACTERS")
     narration_negative_prompt: str = Field(
-        default=("text, words, letters, caption, watermark, signature, logo, blurry, low quality, "
-                 "deformed, extra limbs, cartoon, anime"),
+        default=("3d, realistic, photorealistic, anime, photo texture, hard gradients, text, words, letters, "
+                 "numbers, caption, watermark, signature, logo, blurry, low quality, deformed, extra limbs, "
+                 "malformed hands"),
         alias="NARRATION_NEGATIVE_PROMPT")
+    narration_seed: int = Field(
+        default=0, ge=0,
+        alias="NARRATION_SEED")  # 0 = random per scene; >0 = reproducible (base + scene index)
     narration_motion: str = Field(default="kenburns", pattern="^(none|kenburns)$", alias="NARRATION_MOTION")
     narration_motion_strength: float = Field(default=0.08, ge=0, le=0.5, alias="NARRATION_MOTION_STRENGTH")
     narration_video_encoder: str = Field(default="", alias="NARRATION_VIDEO_ENCODER")
@@ -269,7 +283,7 @@ class Settings(BaseSettings):
     comfy_steps: int = Field(default=4, ge=1, alias="COMFY_STEPS")
     comfy_cfg: float = Field(default=1.0, ge=0, alias="COMFY_CFG")
     comfy_sampler: str = Field(default="euler", alias="COMFY_SAMPLER")
-    comfy_scheduler: str = Field(default="normal", alias="COMFY_SCHEDULER")
+    comfy_scheduler: str = Field(default="simple", alias="COMFY_SCHEDULER")
     comfy_negative_prompt_enabled: bool = Field(default=True, alias="COMFY_NEGATIVE_PROMPT_ENABLED")
 
     # External image generation

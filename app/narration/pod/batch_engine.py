@@ -203,12 +203,14 @@ class BatchEngine:
         manifest = self._load_manifest(video)
         image_dir = self._video_dir(video) / "images"
         requests_map: dict[str, dict] = {}
+        base_seed = self.settings.narration_seed
         for scene in manifest.scenes:
-            positive = compose_positive(manifest.style_prefix, scene.prompt)
+            positive = compose_positive(manifest.style_prefix, scene.prompt, manifest.characters)
             negative = manifest.negative_prompt if self.settings.comfy_negative_prompt_enabled else ""
+            scene_seed = (base_seed + scene.index) if base_seed else None
             workflow, seed = self._comfy_client().build_prompt(
                 positive, negative, self.settings.video_width, self.settings.video_height,
-                filename_prefix=f"scene_{scene.index:04d}")
+                seed=scene_seed, filename_prefix=f"scene_{scene.index:04d}")
             scene.seed = seed
             requests_map[str(scene.index)] = workflow
         results = self._comfy_client().generate_batch(requests_map, image_dir=image_dir)
@@ -218,7 +220,7 @@ class BatchEngine:
                 scene.image_path = str(paths[-1])
         self._fill_missing(manifest)
         # One dedicated thumbnail image from the thumbnail prompt.
-        thumb_positive = compose_positive(manifest.style_prefix, manifest.thumbnail_prompt)
+        thumb_positive = compose_positive(manifest.style_prefix, manifest.thumbnail_prompt, manifest.characters)
         thumb_workflow, _ = self._comfy_client().build_prompt(
             thumb_positive, "", self.settings.video_width, self.settings.video_height,
             filename_prefix="thumbnail")
