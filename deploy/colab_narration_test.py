@@ -7,6 +7,8 @@
 #
 # It clones the public repo, installs Kokoro + ComfyUI + SD1.5, and renders a
 # ~2-minute narrated video with one generated image per scene.
+# Colab's Python 3.13 is too new for Kokoro, so a Python 3.12 venv is created
+# automatically for the narration/TTS step. ComfyUI still uses the system Python.
 # Test profile: 768x432, 16-24 scenes, SD1.5. Production uses FLUX at 1080p.
 # ---------------------------------------------------------------------------
 
@@ -64,9 +66,24 @@ if not (PROJECT / ".git").is_dir():
 else:
     run(["git", "-C", str(PROJECT), "pull", "--ff-only"])
 
-# 4) Python deps -------------------------------------------------------------
-run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", "pip"])
-run([sys.executable, "-m", "pip", "install", "-q",
+# 4) Narration deps in a Python 3.12 venv (Kokoro requires <3.13) -------------
+run([sys.executable, "-m", "pip", "install", "-q", "--upgrade", "pip", "uv"])
+UV = shutil.which("uv")
+if not UV:
+    for candidate in (Path("/usr/local/bin/uv"), Path("/root/.local/bin/uv"),
+                      Path(sys.executable).parent / "uv"):
+        if candidate.is_file():
+            UV = str(candidate)
+            break
+assert UV, "uv installation failed"
+VENV = Path("/content/narration-venv")
+VENV_PY = VENV / "bin" / "python"
+if not VENV_PY.is_file():
+    run([UV, "venv", "--python", "3.12", str(VENV)])
+print("Narration Python:", subprocess.check_output([str(VENV_PY), "--version"], text=True).strip())
+run([UV, "pip", "install", "--python", str(VENV_PY),
+     "--index-url", "https://download.pytorch.org/whl/cpu", "torch"])
+run([UV, "pip", "install", "--python", str(VENV_PY),
      "pydantic", "pydantic-settings", "python-dotenv", "requests", "pillow",
      "numpy", "scipy", "httpx", "websocket-client", "tqdm", "psutil",
      "imageio-ffmpeg", "soundfile", "kokoro"])
@@ -147,7 +164,7 @@ runner.write_text(textwrap.dedent(f"""
     print("RESULT", ok, flush=True)
     sys.exit(0 if ok else 1)
 """), encoding="utf-8")
-run([sys.executable, str(runner)], cwd=str(PROJECT),
+run([str(VENV_PY), str(runner)], cwd=str(PROJECT),
     env={**os.environ, "PYTHONUNBUFFERED": "1", "HF_HUB_DISABLE_TELEMETRY": "1"})
 
 # 10) Output -----------------------------------------------------------------
