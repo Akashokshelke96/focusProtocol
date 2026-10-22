@@ -122,6 +122,10 @@ if not (repo / "app" / "narration" / "studio.py").is_file():
             f"Project not found at {repo}. Upload the repository there, or set REPO_URL."
         )
     run(["git", "clone", "--depth", "1", "--branch", REPO_REF, REPO_URL, repo])
+elif (repo / ".git").is_dir():
+    # The runtime may still have an older checkout; fast-forward it so the
+    # notebook never imports stale app code.
+    run(["git", "-C", str(repo), "pull", "--ff-only"], check=False)
 os.chdir(repo)
 # Absolute-path scripts put deploy/ on sys.path, not the repository root.
 if str(repo) not in sys.path:
