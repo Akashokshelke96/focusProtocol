@@ -217,11 +217,16 @@ class DiffusersImageBackend(ImageBackend):
         self.on_log(
             f"Loading IP-Adapter {self.settings.narration_ip_adapter_repo}/"
             f"{self.settings.narration_ip_adapter_subfolder}/"
-            f"{self.settings.narration_ip_adapter_weight}")
+            f"{self.settings.narration_ip_adapter_weight} "
+            f"(image encoder: {self.settings.narration_ip_adapter_image_encoder or 'image_encoder'})")
+        image_encoder_folder = (
+            self.settings.narration_ip_adapter_image_encoder.strip()
+            or "image_encoder")
         pipe.load_ip_adapter(
             self.settings.narration_ip_adapter_repo,
             subfolder=self.settings.narration_ip_adapter_subfolder,
             weight_name=self.settings.narration_ip_adapter_weight,
+            image_encoder_folder=image_encoder_folder,
         )
         pipe.set_ip_adapter_scale(self.settings.narration_ip_adapter_scale)
         pipe.set_progress_bar_config(disable=True)

@@ -535,6 +535,12 @@ def test_fit_prompt_caps_the_clip_token_budget():
     assert len(fitted.split()) <= 75
 
 
+def test_vit_h_ip_adapter_uses_the_vit_h_image_encoder():
+    settings = _settings()
+    assert "vit-h" in settings.narration_ip_adapter_weight
+    assert settings.narration_ip_adapter_image_encoder == "models/image_encoder"
+
+
 # -------------------------------------------------------------------- notebook
 def test_colab_notebook_has_at_most_two_code_cells_and_uses_studio():
     notebook_path = (Path(__file__).resolve().parents[1] / "deploy"

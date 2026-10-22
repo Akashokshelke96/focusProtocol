@@ -279,6 +279,11 @@ class Settings(BaseSettings):
     narration_ip_adapter_subfolder: str = Field(default="sdxl_models", alias="NARRATION_IP_ADAPTER_SUBFOLDER")
     narration_ip_adapter_weight: str = Field(
         default="ip-adapter-plus_sdxl_vit-h.safetensors", alias="NARRATION_IP_ADAPTER_WEIGHT")
+    # ViT-H adapters use the sibling models/image_encoder (hidden size 1280).
+    # sdxl_models/image_encoder is ViT-bigG (1664) and only matches the
+    # non-vit-h SDXL adapters; using it with a ViT-H adapter raises a shape error.
+    narration_ip_adapter_image_encoder: str = Field(
+        default="models/image_encoder", alias="NARRATION_IP_ADAPTER_IMAGE_ENCODER")
     narration_ip_adapter_scale: float = Field(default=0.65, ge=0, le=1.5, alias="NARRATION_IP_ADAPTER_SCALE")
     narration_reference_views: str = Field(default="full_body,portrait", alias="NARRATION_REFERENCE_VIEWS")
     narration_reference_width: int = Field(default=832, ge=512, alias="NARRATION_REFERENCE_WIDTH")
