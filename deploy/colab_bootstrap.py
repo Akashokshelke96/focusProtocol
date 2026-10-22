@@ -181,6 +181,19 @@ def package(job_id: str, report: dict) -> None:
         print("Thumbnail:", thumbnail)
 
 
+def saved_render_config(job_id: str) -> dict:
+    """Read the original render settings so resume validates the same video."""
+    path = REPO_ROOT / "jobs" / job_id / "metadata.json"
+    if not path.is_file():
+        return {}
+    try:
+        metadata = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    config = metadata.get("render_config")
+    return config if isinstance(config, dict) else {}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Colab one-command narration runner")
     parser.add_argument("--mode", choices=("smoke", "full", "resume"), default="smoke")
@@ -189,21 +202,35 @@ def main() -> int:
     parser.add_argument("--smoke-seconds", type=int, default=30)
     parser.add_argument("--script", default="", help="Approved narration .txt for --mode full")
     parser.add_argument("--job-id", default="")
-    parser.add_argument("--width", type=int, default=1280)
-    parser.add_argument("--height", type=int, default=720)
-    parser.add_argument("--fps", type=int, default=15)
+    parser.add_argument("--width", type=int, default=None,
+                        help="Defaults to 1280, or the job's saved width on resume")
+    parser.add_argument("--height", type=int, default=None,
+                        help="Defaults to 720, or the job's saved height on resume")
+    parser.add_argument("--fps", type=int, default=None,
+                        help="Defaults to 15, or the job's saved FPS on resume")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-install", action="store_true")
     args = parser.parse_args()
 
     os.chdir(REPO_ROOT)
     print("Repository:", REPO_ROOT)
+
+    width, height, fps = args.width, args.height, args.fps
+    if args.mode == "resume" and args.job_id.strip():
+        saved = saved_render_config(args.job_id.strip())
+        width = width or saved.get("video_width")
+        height = height or saved.get("video_height")
+        fps = fps or saved.get("video_fps")
+    width = int(width or 1280)
+    height = int(height or 720)
+    fps = int(fps or 15)
+
     ensure_system_tools()
     check_gpu()
     if not args.no_install:
         pip_install()
     model, config = prepare_voice()
-    configure(args.width, args.height, args.fps, args.seed, model, config,
+    configure(width, height, fps, args.seed, model, config,
               os.getenv("HF_TOKEN", ""))
 
     from app.narration.studio import NarrationStudio
