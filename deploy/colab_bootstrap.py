@@ -23,6 +23,10 @@ from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
+# Running a script by absolute path puts its own folder (deploy/) on sys.path,
+# not the repository root. Add the root before importing any app.* module.
+if str(REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(REPO_ROOT))
 VOICE_DIR = Path("/content/piper_voices")
 VOICE_FILES = {
     "model": "en/en_US/lessac/medium/en_US-lessac-medium.onnx",
@@ -213,6 +217,8 @@ def main() -> int:
     args = parser.parse_args()
 
     os.chdir(REPO_ROOT)
+    if str(REPO_ROOT) not in sys.path:
+        sys.path.insert(0, str(REPO_ROOT))
     print("Repository:", REPO_ROOT)
 
     width, height, fps = args.width, args.height, args.fps

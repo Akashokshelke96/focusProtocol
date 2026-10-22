@@ -123,6 +123,9 @@ if not (repo / "app" / "narration" / "studio.py").is_file():
         )
     run(["git", "clone", "--depth", "1", "--branch", REPO_REF, REPO_URL, repo])
 os.chdir(repo)
+# Absolute-path scripts put deploy/ on sys.path, not the repository root.
+if str(repo) not in sys.path:
+    sys.path.insert(0, str(repo))
 print("Repository:", repo)
 
 if INSTALL_PACKAGES:
@@ -230,6 +233,7 @@ RUN_CELL = dedent(r'''\
 import json
 import os
 import shutil
+import sys
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -247,6 +251,10 @@ MAKE_ZIP = True  #@param {type:"boolean"}
 if OPENROUTER_API_KEY:
     os.environ["OPENROUTER_API_KEY_NARRATOR"] = OPENROUTER_API_KEY
     os.environ["NARRATION_LLM_PROVIDER"] = "openrouter"
+
+# Keep the repository root importable even if this cell is rerun alone.
+if str(Path.cwd()) not in sys.path:
+    sys.path.insert(0, str(Path.cwd()))
 
 from app.narration.studio import NarrationStudio
 
