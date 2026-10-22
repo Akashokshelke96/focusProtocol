@@ -44,9 +44,11 @@ Rules:
 - `wardrobe` must be one fixed outfit that never changes. `distinguishing_features`
   should list 1-3 specific visual anchors (a scar, a bead necklace, a repaired sleeve).
 - `palette` names the character's fixed clothing and accent colours.
-- `reference_prompt` is a full-body studio reference: neutral warm grey backdrop,
-  even soft light, standing relaxed, full figure in frame, no props that hide the body.
-- `portrait_prompt` is a head-and-shoulders reference with the same face and outfit.
+- `reference_prompt` is a 25-45 word full-body studio reference: neutral warm grey
+  backdrop, even soft light, standing relaxed, full figure in frame, no props that
+  hide the body.
+- `portrait_prompt` is a 20-35 word head-and-shoulders reference with the same face
+  and outfit.
 - `forbidden_changes` lists things the image generator must never alter.
 - The style lock must describe medium, palette, lighting, level of detail, and
   camera language. It must explicitly exclude text, captions, logos and watermarks.
@@ -84,7 +86,7 @@ The persistent cast is defined by a separate character bible. Use ONLY these ids
 {characters}
 
 Below is a JSON array of narration beats. Each beat has an index, the narration text spoken at that moment, and its duration in seconds.
-For EACH beat, write ONE rich, detailed storyboard description (55 to 100 words) of a single 16:9 frame that literally shows what is being narrated at that moment. The previous and next beats are continuity context only; do not depict their events early or repeat the same composition.
+For EACH beat, write ONE rich, detailed storyboard description (35 to 60 words) of a single 16:9 frame that literally shows what is being narrated at that moment. Put the subject and action first, then the setting, lighting, and composition. The previous and next beats are continuity context only; do not depict their events early or repeat the same composition.
 
 Every prompt MUST cover, in flowing prose:
 1. Subject(s): who or what is present, their exact pose, gesture, body language, facial expression, gaze direction and what they are holding or doing. If a recurring character appears, name them and use the same identity as the bible.

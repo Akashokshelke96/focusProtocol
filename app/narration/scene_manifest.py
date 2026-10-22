@@ -7,6 +7,7 @@ a multi-hour video.
 """
 from __future__ import annotations
 import json
+import re
 from typing import Any, Optional
 
 from app.config.logging_config import get_logger
@@ -34,12 +35,34 @@ _PERSON_WORDS = (
 )
 
 
+def compact_style(style_prefix: str, max_words: int = 18) -> str:
+    """Keep the part of a long style lock that SDXL's CLIP encoder can use.
+
+    SDXL truncates prompts at 77 tokens. Spending that budget on a 60-word
+    style paragraph hides the actual scene or reference description, so keep
+    the first sentence and cap it to a compact visual-style phrase.
+    """
+    text = " ".join((style_prefix or "").split())
+    if not text:
+        return ""
+    sentence = re.split(r"(?<=[.!?])\s+", text, maxsplit=1)[0]
+    words = sentence.split()
+    if len(words) > max_words:
+        words = words[:max_words]
+    return " ".join(words).strip().rstrip(".,;:")
+
+
 def compose_positive(style_prefix: str, prompt: str, characters: str = "") -> str:
-    """Combine the style prefix, recurring cast, and scene prompt."""
+    """Combine a compact style, the specific prompt, and cast identity.
+
+    The specific prompt is placed before the long identity text because CLIP
+    truncates at 77 tokens. Scene action and reference-view details must
+    survive; IP-Adapter reference images carry the face/wardrobe identity.
+    """
     parts = [
-        (style_prefix or "").strip().rstrip("."),
-        (characters or "").strip().rstrip("."),
+        compact_style(style_prefix),
         (prompt or "").strip().rstrip("."),
+        (characters or "").strip().rstrip("."),
     ]
     return ". ".join(part for part in parts if part)
 

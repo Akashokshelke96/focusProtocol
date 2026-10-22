@@ -4,13 +4,19 @@ from __future__ import annotations
 import json
 import random
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from PIL import Image
 
 from app.config.settings import Settings
 from app.narration.character_bible import CharacterBibleBuilder, script_fingerprint
-from app.narration.image_backends import ImageBackend, ImageRequest, ImageResult
+from app.narration.image_backends import (
+    DiffusersImageBackend,
+    ImageBackend,
+    ImageRequest,
+    ImageResult,
+)
 from app.narration.image_generation import ImageGenerationError, ImageGenerationService
 from app.narration.models import (
     AlignSegment,
@@ -20,7 +26,7 @@ from app.narration.models import (
     ScriptPlan,
 )
 from app.narration.quality import QualityChecker
-from app.narration.scene_manifest import SceneManifestBuilder
+from app.narration.scene_manifest import SceneManifestBuilder, compose_positive
 
 
 SCRIPT = (
@@ -429,6 +435,104 @@ def test_assembler_rejects_visual_shorter_than_narration(tmp_path, monkeypatch):
         video_assembler, "probe_media",
         lambda _path: {"format": {"duration": 5.0}})
     assembler._guard_durations(tmp_path / "visual.mp4", tmp_path / "narration.wav")
+
+
+# ------------------------------------------------------------------ prompts
+def test_compose_positive_prioritizes_the_specific_prompt():
+    style = ("Cinematic painterly documentary illustration, textured gouache and oil "
+             "brushwork, warm light, muted earth tones, " + " ".join(["soft shadow"] * 30))
+    text = compose_positive(
+        style, "A woman knaps flint beside a river.", "Amara has a dark braid.")
+    assert "A woman knaps flint beside a river." in text
+    assert text.index("A woman") < text.index("Amara")
+    assert len(text.split("A woman")[0].split()) <= 20
+
+
+class _FakeTokenizer:
+    model_max_length = 77
+
+    def __call__(self, text, truncation=True, max_length=77, add_special_tokens=False):
+        return SimpleNamespace(input_ids=text.split()[:max_length])
+
+    def decode(self, ids, skip_special_tokens=True):
+        return " ".join(ids)
+
+
+class _FakePipe:
+    def __init__(self):
+        self.tokenizer = _FakeTokenizer()
+        self.tokenizer_2 = _FakeTokenizer()
+        self.unet = SimpleNamespace(
+            encoder_hid_proj=SimpleNamespace(image_projection_layers=[object()]))
+        self.scale = None
+        self.kwargs = None
+
+    def set_ip_adapter_scale(self, scale):
+        self.scale = scale
+
+    def __call__(self, **kwargs):
+        self.kwargs = kwargs
+        return SimpleNamespace(images=[Image.new("RGB", (16, 16), "white")])
+
+
+class _FakeGenerator:
+    def manual_seed(self, seed):
+        return self
+
+
+class _FakeTorch:
+    def Generator(self, device="cpu"):
+        return _FakeGenerator()
+
+
+def _fake_backend():
+    backend = DiffusersImageBackend(_settings(), on_log=lambda _message: None)
+    backend.pipe = _FakePipe()
+    backend.torch = _FakeTorch()
+    return backend
+
+
+def test_diffusers_text_only_reference_gets_ip_adapter_placeholder(tmp_path):
+    backend = _fake_backend()
+    result = backend.generate(ImageRequest(
+        prompt="A full-body reference of Amara",
+        negative_prompt="blurry",
+        width=256,
+        height=256,
+        seed=7,
+        output_path=tmp_path / "reference.png",
+    ))
+    assert result.path.is_file()
+    assert backend.pipe.scale == 0.0
+    assert backend.pipe.kwargs["ip_adapter_image"] is not None
+    assert "text-only" in result.metadata["reference_note"]
+
+
+def test_diffusers_uses_one_reference_per_ip_adapter(tmp_path):
+    first = tmp_path / "first.png"
+    second = tmp_path / "second.png"
+    Image.new("RGB", (32, 32), "gray").save(first)
+    Image.new("RGB", (32, 32), "brown").save(second)
+    backend = _fake_backend()
+    result = backend.generate(ImageRequest(
+        prompt="Amara stands beside a river",
+        negative_prompt="",
+        width=256,
+        height=256,
+        seed=7,
+        output_path=tmp_path / "scene.png",
+        reference_images=[first, second],
+    ))
+    assert result.path.is_file()
+    assert backend.pipe.scale == _settings().narration_ip_adapter_scale
+    assert not isinstance(backend.pipe.kwargs["ip_adapter_image"], list)
+    assert "one image per IP-Adapter" in result.metadata["reference_note"]
+
+
+def test_fit_prompt_caps_the_clip_token_budget():
+    backend = _fake_backend()
+    fitted = backend._fit_prompt(" ".join(f"word{i}" for i in range(120)))
+    assert len(fitted.split()) <= 75
 
 
 # -------------------------------------------------------------------- notebook

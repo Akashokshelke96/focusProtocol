@@ -267,6 +267,30 @@ class DiffusersImageBackend(ImageBackend):
             "loaded": self.pipe is not None,
         }
 
+    def _fit_prompt(self, text: str, max_tokens: int = 75) -> str:
+        """Trim to the CLIP budget before diffusers silently truncates it."""
+        text = (text or "").strip()
+        if not text:
+            return text
+        fitted = text
+        for name in ("tokenizer", "tokenizer_2"):
+            tokenizer = getattr(self.pipe, name, None)
+            if tokenizer is None:
+                continue
+            try:
+                token_ids = tokenizer(
+                    fitted,
+                    truncation=True,
+                    max_length=max_tokens,
+                    add_special_tokens=False,
+                ).input_ids
+                fitted = tokenizer.decode(token_ids, skip_special_tokens=True).strip()
+            except Exception:  # noqa: BLE001 - a backend without a tokenizer is still usable
+                return text
+        if fitted != text:
+            self.on_log(f"Prompt trimmed to the {max_tokens}-token CLIP budget")
+        return fitted
+
     def generate(self, request: ImageRequest) -> ImageResult:
         self._load()
         torch = self.torch
@@ -275,8 +299,9 @@ class DiffusersImageBackend(ImageBackend):
         output.parent.mkdir(parents=True, exist_ok=True)
         generator = torch.Generator(device="cpu").manual_seed(int(request.seed))
         kwargs: dict[str, Any] = {
-            "prompt": request.prompt,
-            "negative_prompt": request.negative_prompt or None,
+            "prompt": self._fit_prompt(request.prompt),
+            "negative_prompt": (self._fit_prompt(request.negative_prompt)
+                                if request.negative_prompt else None),
             "width": int(request.width),
             "height": int(request.height),
             "num_inference_steps": int(request.steps or self.settings.narration_image_steps),
@@ -284,27 +309,63 @@ class DiffusersImageBackend(ImageBackend):
                                     else self.settings.narration_image_guidance),
             "generator": generator,
         }
-        scale = (request.ip_adapter_scale if request.ip_adapter_scale is not None
-                 else self.settings.narration_ip_adapter_scale)
-        self.pipe.set_ip_adapter_scale(float(scale))
+        requested_scale = (request.ip_adapter_scale
+                           if request.ip_adapter_scale is not None
+                           else self.settings.narration_ip_adapter_scale)
 
         references = [Path(path) for path in request.reference_images if Path(path).is_file()]
+        reference_images: list[Image.Image] = []
         reference_note = ""
-        if references:
-            images = [Image.open(path).convert("RGB") for path in references]
-            try:
-                kwargs["ip_adapter_image"] = images if len(images) > 1 else images[0]
-                result = self.pipe(**kwargs)
-            except Exception as error:  # noqa: BLE001 - older diffusers take one image
-                reference_note = f"multi-reference fallback to first image: {error}"
-                self.on_log(reference_note)
-                kwargs["ip_adapter_image"] = images[0]
-                result = self.pipe(**kwargs)
-        else:
-            result = self.pipe(**kwargs)
+        applied_scale = float(requested_scale)
+        try:
+            for path in references:
+                try:
+                    reference_images.append(Image.open(path).convert("RGB"))
+                except Exception as error:  # noqa: BLE001 - try the remaining references
+                    self.on_log(f"Skipping unreadable reference {path}: {error}")
 
-        image = result.images[0]
-        image.save(output)
+            # Diffusers expects one ip_adapter_image per loaded IP-Adapter.
+            # This pipeline loads one adapter, so use the primary full-body
+            # reference instead of passing a list that would raise.
+            projection_layers = getattr(
+                getattr(getattr(self.pipe, "unet", None), "encoder_hid_proj", None),
+                "image_projection_layers", None)
+            adapter_count = len(projection_layers) if projection_layers is not None else 1
+            if reference_images and adapter_count and len(reference_images) > adapter_count:
+                reference_note = (
+                    f"using {adapter_count} of {len(reference_images)} references "
+                    "(one image per IP-Adapter)")
+                for extra in reference_images[adapter_count:]:
+                    extra.close()
+                reference_images = reference_images[:adapter_count]
+
+            if reference_images:
+                self.pipe.set_ip_adapter_scale(applied_scale)
+                kwargs["ip_adapter_image"] = (
+                    reference_images if len(reference_images) > 1 else reference_images[0])
+                try:
+                    result = self.pipe(**kwargs)
+                except Exception as error:  # noqa: BLE001 - older diffusers take one image
+                    reference_note = f"multi-reference fallback to first image: {error}"
+                    self.on_log(reference_note)
+                    kwargs["ip_adapter_image"] = reference_images[0]
+                    result = self.pipe(**kwargs)
+            else:
+                # IP-Adapter changes the UNet to require image_embeds. A text-only
+                # call (the first full-body reference, or a scene with no cast)
+                # still needs a placeholder; scale 0 keeps it out of the result.
+                applied_scale = 0.0
+                self.pipe.set_ip_adapter_scale(applied_scale)
+                kwargs["ip_adapter_image"] = Image.new("RGB", (224, 224), (127, 127, 127))
+                reference_note = "text-only (IP-Adapter scale 0.0)"
+                result = self.pipe(**kwargs)
+
+            image = result.images[0]
+            image.save(output)
+        finally:
+            for reference_image in reference_images:
+                reference_image.close()
+
         return ImageResult(
             path=output,
             seed=int(request.seed),
@@ -312,10 +373,10 @@ class DiffusersImageBackend(ImageBackend):
             metadata={
                 "model": self.settings.narration_image_model,
                 "ip_adapter": self.settings.narration_ip_adapter_weight,
-                "ip_adapter_scale": float(scale),
+                "ip_adapter_scale": applied_scale,
                 "steps": kwargs["num_inference_steps"],
                 "guidance": kwargs["guidance_scale"],
-                "references": len(references),
+                "references": len(reference_images),
                 "reference_note": reference_note,
             },
         )
