@@ -11,10 +11,12 @@ import subprocess
 from pathlib import Path
 from typing import Callable, Optional
 
+from PIL import Image, ImageDraw, ImageFont, ImageOps
+
 from app.config.logging_config import get_logger
 from app.config.settings import Settings
 from app.narration.models import SceneManifest, Scene
-from app.utils.ffmpeg import find_ffmpeg, no_window_flags
+from app.utils.ffmpeg import find_ffmpeg, no_window_flags, probe_media
 
 logger = get_logger("narration.assembler")
 
@@ -46,24 +48,78 @@ class VideoAssembler:
         else:
             visual = self._render_concat(scenes, work_dir, on_progress)
 
+        self._guard_durations(visual, narration_audio)
         self._mux(str(visual), str(narration_audio), str(output_path))
         logger.info("Assembled narration video: %s", output_path)
         return output_path
 
-    def make_thumbnail(self, image_path: Path, output_path: Path) -> Optional[Path]:
+    def _guard_durations(self, visual: Path, narration_audio: Path) -> None:
+        """Never let ``-shortest`` silently truncate narration.
+
+        The concat demuxer can finish a fraction early. If the visual track is
+        materially shorter than the narration, fail before muxing.
+        """
+        visual_info = probe_media(visual)
+        audio_info = probe_media(narration_audio)
+        visual_seconds = float(visual_info.get("format", {}).get("duration", 0.0))
+        audio_seconds = float(audio_info.get("format", {}).get("duration", 0.0))
+        if visual_seconds <= 0 or audio_seconds <= 0:
+            raise AssemblyError(
+                f"Could not probe visual ({visual_seconds:.2f}s) or audio ({audio_seconds:.2f}s) duration")
+        tolerance = max(0.5, min(3.0, audio_seconds * 0.005))
+        if visual_seconds + tolerance < audio_seconds:
+            raise AssemblyError(
+                f"Visual track is {audio_seconds - visual_seconds:.2f}s shorter than the narration "
+                f"({visual_seconds:.2f}s vs {audio_seconds:.2f}s); refusing to truncate audio. "
+                "Check the scene manifest durations/image timeline.")
+        logger.info("Timeline duration check passed: visual %.2fs / narration %.2fs",
+                    visual_seconds, audio_seconds)
+
+    def make_thumbnail(self, image_path: Path, output_path: Path,
+                       headline: str = "") -> Optional[Path]:
         image_path = Path(image_path)
         if not image_path.is_file():
             logger.warning("Thumbnail source missing: %s", image_path)
             return None
-        width, height = 1280, 720
-        filter_chain = (
-            f"scale={width}:{height}:force_original_aspect_ratio=increase,"
-            f"crop={width}:{height},format=rgb24"
-        )
-        cmd = [str(self.ffmpeg), "-y", "-i", str(image_path), "-vf", filter_chain,
-               "-frames:v", "1", str(output_path)]
-        self._run(cmd)
-        return Path(output_path)
+        settings = getattr(self, "settings", None)
+        width = int(getattr(settings, "narration_thumbnail_width", 1280) or 1280)
+        height = int(getattr(settings, "narration_thumbnail_height", 720) or 720)
+        image = ImageOps.fit(Image.open(image_path).convert("RGB"), (width, height),
+                             method=Image.Resampling.LANCZOS, centering=(0.5, 0.5))
+        label = " ".join((headline or "").split()).upper()
+        if label:
+            draw = ImageDraw.Draw(image)
+            font = self._thumbnail_font(label, width - 100)
+            bounds = draw.textbbox((0, 0), label, font=font, stroke_width=7)
+            text_width = bounds[2] - bounds[0]
+            x = (width - text_width) / 2 - bounds[0]
+            y = 28 - bounds[1]
+            draw.text((x, y), label, font=font, fill=(255, 226, 35),
+                      stroke_width=7, stroke_fill=(20, 19, 18))
+        output_path = Path(output_path)
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        image.save(output_path)
+        return output_path
+
+    @staticmethod
+    def _thumbnail_font(label: str, max_width: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+        candidates = [
+            Path("C:/Windows/Fonts/Arialbd.ttf"),
+            Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ]
+        font_path = next((path for path in candidates if path.is_file()), None)
+        size = 112
+        while size > 42:
+            try:
+                font = ImageFont.truetype(str(font_path), size) if font_path else ImageFont.load_default(size=size)
+            except TypeError:  # Pillow before the size-aware bitmap default font
+                font = ImageFont.load_default()
+            width = ImageDraw.Draw(Image.new("RGB", (1, 1))).textbbox(
+                (0, 0), label, font=font, stroke_width=7)[2]
+            if width <= max_width:
+                return font
+            size -= 4
+        return ImageFont.truetype(str(font_path), 42) if font_path else ImageFont.load_default()
 
     def export(self, video_path: Path, thumbnail_path: Optional[Path], job_id: str) -> dict:
         """Copy deliverables into the configured export directory."""

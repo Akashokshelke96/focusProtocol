@@ -1,27 +1,33 @@
 """End-to-end narrated pipeline orchestrator.
 
-Script (OpenRouter) -> local approval -> remote RunPod TTS + WhisperX ->
-scene manifest -> ComfyUI images -> FFmpeg assembly -> validation/export.
+Script (LLM) -> local approval -> TTS + WhisperX/Piper -> persistent character
+bible + reference images -> semantic scene manifest -> reference-conditioned
+image generation -> FFmpeg assembly -> validation/export.
 
-Persists every stage through the shared JobManager so the existing
-dashboard, job history and live logs keep working unchanged.
+Every stage is persisted through the shared JobManager so the existing
+dashboard, job history and live logs keep working unchanged. Image generation
+is incremental: a resumed job reuses the character bible, manifest, references,
+and every scene image whose cache key still matches.
 """
 from __future__ import annotations
 import json
-import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Optional
 
+from PIL import Image
+
 from app.config.logging_config import get_logger
 from app.config.settings import Settings, get_settings
 from app.jobs.manager import JobManager
-from app.llm.gemini import GeminiProvider
 from app.narration.audio_engine import AudioEngine
-from app.narration.comfy_client import ComfyUIClient
-from app.narration.config import narration_dirs, require_remote
+from app.narration.character_bible import CharacterBibleBuilder, script_fingerprint
+from app.narration.config import image_model_label, narration_dirs, require_remote
+from app.narration.image_backends import ImageBackend, build_image_backend
+from app.narration.image_generation import ImageGenerationService
+from app.narration.llm import build_narration_llm
 from app.narration.models import AlignmentResult, SceneManifest, ScriptPlan
-from app.narration.scene_manifest import SceneManifestBuilder, compose_positive
+from app.narration.scene_manifest import SceneManifestBuilder
 from app.narration.script_generator import ScriptDeclined, ScriptGenerator
 from app.narration.video_assembler import AssemblyError, VideoAssembler
 from app.utils.ffmpeg import probe_media
@@ -31,11 +37,12 @@ logger = get_logger("narration.orchestrator")
 
 
 class NarrationOrchestrator:
-    def __init__(self, settings: Optional[Settings] = None, context: Optional[dict] = None):
+    def __init__(self, settings: Optional[Settings] = None, context: Optional[dict] = None,
+                 llm: Any = None):
         self.settings = settings or get_settings()
         self.context = context or {}
         self.job_manager = JobManager()
-        self.llm = GeminiProvider(self.settings)
+        self.llm = llm or build_narration_llm(self.settings)
         self.script_generator = ScriptGenerator(self.settings, self.llm)
         self.manifest_builder = SceneManifestBuilder(self.settings, self.llm)
         self.assembler = VideoAssembler(self.settings)
@@ -47,9 +54,9 @@ class NarrationOrchestrator:
     def run(self, topic: str, duration_minutes: Optional[float] = None,
             auto_approve: bool = False, count: int = 1,
             resume_job_id: Optional[str] = None) -> bool:
+        if resume_job_id:
+            return self.resume(resume_job_id)
         with publishing_lock(Path("jobs") / "generation"):
-            if resume_job_id:
-                return self.resume(resume_job_id)
             minutes = float(duration_minutes or self.settings.narration_target_duration_minutes)
             success = 0
             for index in range(max(1, count)):
@@ -59,8 +66,20 @@ class NarrationOrchestrator:
                     success += 1
             return success == max(1, count)
 
+    def run_script(self, plan: ScriptPlan, duration_minutes: Optional[float] = None,
+                   job_id: Optional[str] = None) -> bool:
+        """Run an already-approved script through the production pipeline.
+
+        Used by the reusable studio and the Colab smoke test so both exercise
+        exactly the same code path as the dashboard.
+        """
+        plan.approved = True
+        minutes = float(duration_minutes or self.settings.narration_target_duration_minutes)
+        with publishing_lock(Path("jobs") / "generation"):
+            return self._run_plan(plan, minutes, job_id)
+
     def resume(self, job_id: str) -> bool:
-        """Continue an approved job from the remote stages without regenerating the script."""
+        """Continue an approved job, reusing every valid cached artifact."""
         job = self.job_manager.get_job(job_id)
         if not job:
             raise ValueError(f"Job not found: {job_id}")
@@ -85,22 +104,7 @@ class NarrationOrchestrator:
         dirs = narration_dirs(Path("jobs") / job_id)
         started_at = datetime.now().astimezone()
 
-        metadata: dict[str, Any] = dict(job.metadata or {})
-        metadata.update(
-            narration_mode=True,
-            topic=topic,
-            target_duration_seconds=target_seconds,
-            started_at=started_at.isoformat(),
-            render_config={
-                key: getattr(self.settings, key) for key in (
-                    "video_width", "video_height", "video_fps", "ffmpeg_preset",
-                    "ffmpeg_crf", "narration_motion", "narration_motion_strength",
-                    "comfy_steps", "comfy_cfg")
-            },
-        )
-        job.metadata = metadata
-        self.job_manager.update_job(job)
-
+        metadata = self._base_metadata(job, topic, target_seconds, started_at)
         try:
             self._stage(job, "SCRIPT")
             try:
@@ -113,17 +117,64 @@ class NarrationOrchestrator:
                 write_json(dirs["job"] / "metadata.json", metadata)
                 self.job_manager.update_job(job)
                 return False
-            metadata["script"] = {
-                "title": plan.title, "path": str((dirs["script"] / "script.json").resolve()),
-                "word_count": plan.word_count,
-                "estimated_duration_seconds": plan.estimated_duration_seconds,
-                "approved": plan.approved, "edited": plan.edited,
-            }
+            metadata["script"] = self._script_metadata(plan, dirs["script"] / "script.json")
             self.job_manager.update_job(job)
             return self._execute(job, dirs["job"], metadata, plan, duration_minutes)
         except Exception as error:  # noqa: BLE001 - persisted as a failed job
             self._fail(job, dirs["job"], metadata, started_at, error)
             return False
+
+    def _run_plan(self, plan: ScriptPlan, duration_minutes: float,
+                  job_id: Optional[str]) -> bool:
+        job_id = job_id or self.context.get("job_id") or (
+            datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_narration_001")
+        self.last_job_ids.append(job_id)
+        target_seconds = int(duration_minutes * 60)
+        job = self.job_manager.create_job(job_id, plan.topic, int(duration_minutes))
+        dirs = narration_dirs(Path("jobs") / job_id)
+        started_at = datetime.now().astimezone()
+        metadata = self._base_metadata(job, plan.topic, target_seconds, started_at)
+        self.script_generator.save(plan, dirs["job"])
+        metadata["script"] = self._script_metadata(plan, dirs["script"] / "script.json")
+        job.metadata = metadata
+        self.job_manager.update_job(job)
+        try:
+            return self._execute(job, dirs["job"], metadata, plan, duration_minutes)
+        except Exception as error:  # noqa: BLE001 - persisted as a failed job
+            self._fail(job, dirs["job"], metadata, started_at, error)
+            return False
+
+    def _base_metadata(self, job, topic: str, target_seconds: int,
+                       started_at: datetime) -> dict[str, Any]:
+        metadata: dict[str, Any] = dict(job.metadata or {})
+        metadata.update(
+            narration_mode=True,
+            topic=topic,
+            target_duration_seconds=target_seconds,
+            started_at=started_at.isoformat(),
+            image_backend=self.settings.narration_image_backend,
+            image_model=image_model_label(self.settings),
+            render_config={
+                key: getattr(self.settings, key) for key in (
+                    "video_width", "video_height", "video_fps", "ffmpeg_preset",
+                    "ffmpeg_crf", "narration_motion", "narration_motion_strength",
+                    "narration_image_width", "narration_image_height",
+                    "narration_image_steps", "narration_ip_adapter_scale",
+                    "narration_scene_seconds")
+            },
+        )
+        job.metadata = metadata
+        self.job_manager.update_job(job)
+        return metadata
+
+    @staticmethod
+    def _script_metadata(plan: ScriptPlan, path: Path) -> dict[str, Any]:
+        return {
+            "title": plan.title, "path": str(path.resolve()),
+            "word_count": plan.word_count,
+            "estimated_duration_seconds": plan.estimated_duration_seconds,
+            "approved": plan.approved, "edited": plan.edited,
+        }
 
     # -------------------------------------------------------------- stages
     def _execute(self, job, job_dir: Path, metadata: dict, plan: ScriptPlan,
@@ -131,17 +182,22 @@ class NarrationOrchestrator:
         dirs = narration_dirs(job_dir)
         started_at = datetime.fromisoformat(metadata.get("started_at") or
                                             datetime.now().astimezone().isoformat())
+        backend: Optional[ImageBackend] = None
         try:
             require_remote(self.settings)
             audio = AudioEngine(self.settings, dirs["audio"])
 
-            self._stage(job, "REMOTE_CHECK")
-            client = ComfyUIClient(self.settings, on_log=lambda message: logger.info(message))
-            stats = client.health()
-            metadata["comfy_system_stats"] = {
-                key: stats.get(key) for key in ("system",) if isinstance(stats, dict)
-            }
+            self._stage(job, "BACKEND_CHECK")
+            backend = build_image_backend(
+                self.settings, on_log=lambda message: self.logger.info(message))
+            metadata["image_backend"] = backend.name
+            health = backend.health()
+            metadata["image_backend_health"] = health
             self.job_manager.update_job(job)
+            if not health.get("reachable", False):
+                raise RuntimeError(
+                    f"Image backend {backend.name} is not available: "
+                    f"{health.get('error', 'unknown error')}")
 
             self._stage(job, "TTS")
             narration_path = dirs["audio"] / "narration.wav"
@@ -152,22 +208,72 @@ class NarrationOrchestrator:
             self.job_manager.update_job(job)
 
             self._stage(job, "ALIGN")
-            alignment = audio.align(narration_path) or audio.estimate_alignment(plan.script, duration_seconds)
+            alignment = audio.align(narration_path) or audio.estimate_alignment(
+                plan.script, duration_seconds)
             write_json(dirs["alignment"] / "alignment.json", alignment.model_dump())
             metadata["alignment_source"] = alignment.source
             metadata["alignment_segments"] = len(alignment.segments)
             self.job_manager.update_job(job)
+            audio.unload_models()
+
+            self._stage(job, "CHARACTERS")
+            bible_builder = CharacterBibleBuilder(self.settings, self.llm)
+            style = self.settings.narration_style_prefix
+            direction = self.settings.narration_creative_direction
+            fingerprint = script_fingerprint(plan, style, direction)
+            bible = bible_builder.load_or_build(
+                plan, job_dir, style_prefix=style, creative_direction=direction)
+            metadata["character_bible"] = {
+                "path": str((dirs["characters"] / "character_bible.json").resolve()),
+                "fingerprint": bible.fingerprint,
+                "source": bible.source,
+                "style_lock": bible.style_lock,
+                "characters": [
+                    {"id": character.id, "name": character.name, "role": character.role,
+                     "seed": character.seed}
+                    for character in bible.characters
+                ],
+            }
+            self.job_manager.update_job(job)
+
+            image_service = ImageGenerationService(
+                self.settings, backend,
+                on_log=lambda message: self.logger.info(message),
+                on_progress=self._image_progress(job),
+            )
+            self._stage(job, "REFERENCES")
+            reference_stats = image_service.ensure_references(
+                bible, job_dir,
+                on_save=lambda current: bible_builder.save(current, job_dir))
+            metadata["reference_generation"] = reference_stats.as_dict()
+            metadata["reference_images"] = [
+                {"character_id": character.id, "view": reference.view, "path": reference.path}
+                for character in bible.characters for reference in character.references
+            ]
+            self.job_manager.update_job(job)
 
             self._stage(job, "MANIFEST")
-            manifest = self.manifest_builder.build(plan, alignment, duration_seconds, str(narration_path))
+            manifest = self._load_or_build_manifest(
+                plan, alignment, duration_seconds, str(narration_path), dirs["manifest"],
+                bible, fingerprint, job_dir)
             write_json(dirs["manifest"] / "manifest.json", manifest.model_dump())
             metadata["scene_count"] = len(manifest.scenes)
+            metadata["manifest_path"] = str((dirs["manifest"] / "manifest.json").resolve())
             self.job_manager.update_job(job)
 
             self._stage(job, "IMAGES")
-            self._generate_images(job, manifest, client, dirs["images"], metadata)
+            stats = image_service.generate_manifest(
+                manifest, dirs["images"],
+                on_save=lambda current: write_json(
+                    dirs["manifest"] / "manifest.json", current.model_dump()))
             self._fill_missing_images(manifest)
             write_json(dirs["manifest"] / "manifest.json", manifest.model_dump())
+            metadata["image_generation"] = stats.as_dict()
+            metadata["image_count"] = sum(1 for scene in manifest.scenes if scene.image_path)
+            review = [scene.index for scene in manifest.scenes
+                      if scene.validation_status == "needs_review"]
+            if review:
+                metadata["images_needs_review"] = review
             self.job_manager.update_job(job)
 
             self._stage(job, "ASSEMBLE")
@@ -177,18 +283,26 @@ class NarrationOrchestrator:
             self.job_manager.update_job(job)
 
             self._stage(job, "THUMBNAIL")
-            thumbnail_path = self._generate_thumbnail(job, manifest, client, dirs["thumbnail"])
+            thumbnail_path, thumbnail_meta = self._make_thumbnail(
+                manifest, image_service, dirs["thumbnail"])
+            metadata["thumbnail"] = thumbnail_meta
             metadata["thumbnail_path"] = str(thumbnail_path) if thumbnail_path else ""
 
             self._stage(job, "VALIDATE")
             self._validate(output_path, duration_seconds, metadata)
+            self._validate_thumbnail(thumbnail_path, metadata)
 
             self._stage(job, "EXPORT")
             metadata["export"] = self.assembler.export(
                 output_path, Path(thumbnail_path) if thumbnail_path else None, job.id)
 
             self._stage(job, "COMPLETE")
-            fallback = manifest.alignment_source == "estimated" or bool(metadata.get("image_fallbacks"))
+            fallback = (
+                manifest.alignment_source == "estimated"
+                or bool(metadata.get("images_needs_review"))
+                or bool(thumbnail_meta.get("fallback_reason"))
+                or bible.source == "fallback"
+            )
             job.status = "completed_with_fallback" if fallback else "completed"
             completed_at = datetime.now().astimezone()
             metadata.update(generation_status=job.status, completed_at=completed_at.isoformat(),
@@ -196,99 +310,160 @@ class NarrationOrchestrator:
             job.metadata = metadata
             write_json(job_dir / "metadata.json", metadata)
             self.job_manager.update_job(job)
-            client.close()
             self.logger.info("Narration job %s finished: %s", job.id, job.status)
             return True
         except Exception as error:  # noqa: BLE001 - persisted as a failed job
             self._fail(job, job_dir, metadata, started_at, error)
             return False
+        finally:
+            if backend is not None:
+                backend.close()
 
-    def _generate_images(self, job, manifest: SceneManifest, client: ComfyUIClient,
-                         image_dir: Path, metadata: dict) -> None:
-        requests_map: dict[str, dict] = {}
-        for scene in manifest.scenes:
-            positive = compose_positive(manifest.style_prefix, scene.prompt, manifest.characters)
-            negative = manifest.negative_prompt if self.settings.comfy_negative_prompt_enabled else ""
-            workflow, seed = client.build_prompt(
-                positive, negative, self.settings.video_width, self.settings.video_height,
-                filename_prefix=f"scene_{scene.index:04d}")
-            scene.seed = seed
-            requests_map[str(scene.index)] = workflow
+    def _load_or_build_manifest(
+        self,
+        plan: ScriptPlan,
+        alignment: AlignmentResult,
+        duration_seconds: float,
+        narration_path: str,
+        manifest_dir: Path,
+        bible,
+        fingerprint: str,
+        job_dir: Path,
+    ) -> SceneManifest:
+        path = Path(manifest_dir) / "manifest.json"
+        if self.settings.narration_manifest_reuse and path.is_file():
+            try:
+                existing = SceneManifest.model_validate_json(path.read_text(encoding="utf-8"))
+                bible_fp = existing.character_bible.fingerprint if existing.character_bible else ""
+                if (existing.script_fingerprint == fingerprint
+                        and bible_fp == bible.fingerprint
+                        and abs(existing.target_duration_seconds - duration_seconds) <= 1.0
+                        and existing.scenes):
+                    existing.character_bible = bible
+                    existing.narration_audio = narration_path
+                    self.logger.info("Reusing %s-scene manifest from a previous attempt",
+                                     len(existing.scenes))
+                    return existing
+            except Exception as error:  # noqa: BLE001 - stale cache is rebuilt
+                self.logger.warning("Ignoring stale scene manifest: %s", error)
+        manifest = self.manifest_builder.build(
+            plan, alignment, duration_seconds, narration_path,
+            character_bible=bible,
+            creative_direction=self.settings.narration_creative_direction,
+            script_fingerprint=fingerprint,
+        )
+        write_json(Path(manifest_dir) / "manifest.json", manifest.model_dump())
+        return manifest
 
-        total = len(requests_map)
-        metadata["image_total"] = total
-        failed_keys: list[str] = []
+    def _make_thumbnail(self, manifest: SceneManifest, image_service: ImageGenerationService,
+                        thumbnail_dir: Path) -> tuple[Optional[Path], dict[str, Any]]:
+        meta: dict[str, Any] = {}
+        try:
+            source = image_service.generate_thumbnail(manifest, thumbnail_dir)
+        except Exception as error:  # noqa: BLE001 - fall back to a validated scene
+            self.logger.warning("Thumbnail image generation failed: %s", error)
+            meta["generation_error"] = str(error)[:500]
+            source = None
+        if source is None:
+            fallback = next((Path(scene.image_path) for scene in manifest.scenes
+                             if scene.image_path and Path(scene.image_path).is_file()), None)
+            if fallback is None:
+                meta["error"] = "no thumbnail image and no fallback scene"
+                return None, meta
+            meta["fallback_reason"] = "thumbnail backend failed; used the first scene image"
+            source = fallback
+        source_path = Path(source)
+        headline = manifest.thumbnail_text or "WHAT DID THEY DO?"
+        output = self.assembler.make_thumbnail(source_path, thumbnail_dir / "thumbnail.png", headline)
+        if output:
+            meta["headline"] = headline
+            meta["source"] = str(source_path)
+        return output, meta
 
-        def on_progress(done: int, _total: int) -> None:
-            job.metadata["image_progress"] = {"done": done, "total": _total}
-            self.logger.info("[Images %s/%s]", done, _total)
-
-        def on_error(key: str, message: str) -> None:
-            failed_keys.append(key)
-            self.logger.warning("Scene %s failed: %s", key, message)
-
-        results = client.generate_batch(requests_map, on_progress=on_progress,
-                                        on_error=on_error, image_dir=image_dir)
-        for scene in manifest.scenes:
-            paths = results.get(str(scene.index)) or []
-            if paths:
-                scene.image_path = str(paths[-1])
-        generated = sum(1 for scene in manifest.scenes if scene.image_path)
-        metadata["image_count"] = generated
-        if failed_keys:
-            metadata["image_fallbacks"] = sorted(set(failed_keys))
-        self.job_manager.update_job(job)
+    def _image_progress(self, job):
+        def callback(done: int, total: int) -> None:
+            job.metadata["image_progress"] = {"done": done, "total": total}
+            self.logger.info("[Images %s/%s]", done, total)
+        return callback
 
     @staticmethod
     def _fill_missing_images(manifest: SceneManifest) -> None:
-        """Reuse the nearest generated image so every scene has a visual."""
-        available = [scene for scene in manifest.scenes if scene.image_path]
-        if not available:
-            raise AssemblyError("ComfyUI produced no images; cannot assemble the video")
-        fallback = available[0].image_path
-        for scene in manifest.scenes:
-            if not scene.image_path:
-                scene.image_path = fallback
-            else:
-                fallback = scene.image_path
-
-    def _generate_thumbnail(self, job, manifest: SceneManifest, client: ComfyUIClient,
-                            thumbnail_dir: Path) -> Optional[Path]:
-        positive = compose_positive(manifest.style_prefix, manifest.thumbnail_prompt, manifest.characters)
-        negative = manifest.negative_prompt if self.settings.comfy_negative_prompt_enabled else ""
-        workflow, _seed = client.build_prompt(
-            positive, negative, self.settings.video_width, self.settings.video_height,
-            filename_prefix="thumbnail")
-        results = client.generate_batch({"thumbnail": workflow}, image_dir=thumbnail_dir)
-        images = results.get("thumbnail") or []
-        if not images:
-            self.logger.warning("Thumbnail generation failed; continuing without one")
-            return None
-        return self.assembler.make_thumbnail(images[-1], thumbnail_dir / "thumbnail.png")
+        """Reject incomplete image sets instead of silently showing the wrong scene."""
+        missing = [str(scene.index) for scene in manifest.scenes
+                   if not scene.image_path or not Path(scene.image_path).is_file()
+                   or scene.validation_status == "failed"]
+        if missing:
+            preview = ", ".join(missing[:12])
+            suffix = "…" if len(missing) > 12 else ""
+            raise AssemblyError(
+                f"No usable scene-specific image was produced for {len(missing)} scene(s) "
+                f"({preview}{suffix}). The pipeline stopped instead of rendering unrelated "
+                "repeated images. Fix the backend, then resume the same job; valid scenes are cached."
+            )
 
     def _validate(self, video_path: Path, expected_seconds: float, metadata: dict) -> None:
         info = probe_media(video_path)
         streams = info.get("streams", [])
-        kinds = {stream.get("codec_type") for stream in streams}
-        if "video" not in kinds or "audio" not in kinds:
-            raise AssemblyError("Output must contain one video and one audio stream")
-        video = next(stream for stream in streams if stream.get("codec_type") == "video")
+        videos = [stream for stream in streams if stream.get("codec_type") == "video"]
+        audios = [stream for stream in streams if stream.get("codec_type") == "audio"]
+        if len(videos) != 1 or len(audios) != 1:
+            raise AssemblyError(
+                f"Output must contain exactly one video and one audio stream; "
+                f"found {len(videos)} video and {len(audios)} audio"
+            )
+        video = videos[0]
         width, height = int(video.get("width", 0)), int(video.get("height", 0))
         if (width, height) != (self.settings.video_width, self.settings.video_height):
             raise AssemblyError(
                 f"Output resolution {width}x{height} != configured "
                 f"{self.settings.video_width}x{self.settings.video_height}")
+        fps_raw = video.get("avg_frame_rate") or video.get("r_frame_rate") or "0/1"
+        try:
+            numerator, denominator = fps_raw.split("/", 1)
+            fps = float(numerator) / max(1.0, float(denominator))
+        except (TypeError, ValueError, ZeroDivisionError):
+            fps = 0.0
+        if abs(fps - self.settings.video_fps) > 0.2:
+            raise AssemblyError(
+                f"Output frame rate {fps:.3f} != configured {self.settings.video_fps}")
         duration = float(info.get("format", {}).get("duration", 0.0))
+        audio_duration = float(audios[0].get("duration", 0.0) or 0.0)
+        video_duration = float(video.get("duration", 0.0) or 0.0)
         tolerance = max(self.settings.audio_duration_tolerance_seconds, expected_seconds * 0.02)
         if abs(duration - expected_seconds) > tolerance:
             raise AssemblyError(
                 f"Output duration {duration:.1f}s differs from narration {expected_seconds:.1f}s "
                 f"by more than {tolerance:.1f}s")
+        if audio_duration and video_duration and abs(audio_duration - video_duration) > tolerance:
+            raise AssemblyError(
+                f"Video ({video_duration:.1f}s) and audio ({audio_duration:.1f}s) streams "
+                f"differ by more than {tolerance:.1f}s; the visual track may be truncating audio")
         metadata["output_validation"] = {
-            "width": width, "height": height, "duration_seconds": round(duration, 3),
-            "streams": sorted(kind for kind in kinds if kind),
+            "width": width, "height": height, "fps": round(fps, 3),
+            "duration_seconds": round(duration, 3),
+            "video_duration_seconds": round(video_duration, 3),
+            "audio_duration_seconds": round(audio_duration, 3),
+            "streams": ["audio", "video"],
         }
         self.logger.info("Validation passed: %sx%s %.1fs", width, height, duration)
+
+    def _validate_thumbnail(self, thumbnail_path: Optional[Path], metadata: dict) -> None:
+        if not thumbnail_path:
+            metadata["thumbnail_validation"] = {"ok": False, "error": "not generated"}
+            raise AssemblyError(
+                f"A separate {self.settings.narration_thumbnail_width}x"
+                f"{self.settings.narration_thumbnail_height} thumbnail was not produced")
+        try:
+            with Image.open(thumbnail_path) as image:
+                size = image.size
+        except Exception as error:  # noqa: BLE001 - corrupt output
+            raise AssemblyError(f"Thumbnail is not decodable: {error}") from error
+        if size != (self.settings.narration_thumbnail_width,
+                    self.settings.narration_thumbnail_height):
+            raise AssemblyError(
+                f"Thumbnail is {size[0]}x{size[1]}, expected "
+                f"{self.settings.narration_thumbnail_width}x{self.settings.narration_thumbnail_height}")
+        metadata["thumbnail_validation"] = {"ok": True, "width": size[0], "height": size[1]}
 
     # --------------------------------------------------------------- helpers
     def _stage(self, job, stage: str) -> None:

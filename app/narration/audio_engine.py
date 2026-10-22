@@ -1,15 +1,19 @@
-"""Remote narration audio: Kokoro TTS + WhisperX alignment over RunPod HTTP.
+"""Narration audio: remote Kokoro, local Kokoro/Piper TTS, and WhisperX alignment.
 
-Both services are expected to be exposed on the RunPod pod:
+Remote services are expected to expose:
 - TTS: an OpenAI-compatible ``/v1/audio/speech`` endpoint (e.g. Kokoro-FastAPI).
 - Alignment: a WhisperX HTTP endpoint that accepts an audio upload and
   returns ``segments`` with start/end (and optionally word) timings.
 
-When alignment is unavailable the engine falls back to a deterministic
-proportional estimate so the pipeline can still complete.
+Local backends (``kokoro_local``, ``piper_local``, ``whisperx_local``) let a
+Colab T4 or a RunPod worker run without a second service. When alignment is
+unavailable the engine falls back to a deterministic proportional estimate.
 """
 from __future__ import annotations
 import json
+import shutil
+import subprocess
+import sys
 import wave
 from pathlib import Path
 from typing import Any, Optional
@@ -59,6 +63,8 @@ class AudioEngine:
             raise ValueError("Cannot synthesize empty narration text")
         if self.settings.narration_tts_backend == "kokoro_local":
             return self._synthesize_kokoro(text, Path(output_path))
+        if self.settings.narration_tts_backend == "piper_local":
+            return self._synthesize_piper(text, Path(output_path))
         endpoint = _speech_endpoint(self.settings.narration_tts_url)
         if not endpoint:
             raise RemoteServiceError("NARRATION_TTS_URL is not configured")
@@ -191,6 +197,42 @@ class AudioEngine:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         sf.write(str(output_path), samples, self.settings.narration_kokoro_sample_rate)
         logger.info("Kokoro narration written: %s", output_path.name)
+        return output_path
+
+    def _synthesize_piper(self, text: str, output_path: Path) -> Path:
+        """Local Piper TTS, invoked as a CLI so Colab needs no Python glue."""
+        model = (self.settings.narration_piper_model or "").strip()
+        if not model or not Path(model).is_file():
+            raise RemoteServiceError(
+                "piper_local needs NARRATION_PIPER_MODEL pointing at a downloaded .onnx voice")
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        binary = shutil.which(self.settings.narration_piper_binary or "piper")
+        if binary:
+            command = [binary]
+        else:
+            command = [sys.executable, "-m", "piper"]
+        command += ["--model", model, "--output_file", str(output_path)]
+        config = (self.settings.narration_piper_config or "").strip()
+        if config:
+            command += ["--config", config]
+        if self.settings.narration_piper_speaker:
+            command += ["--speaker", str(self.settings.narration_piper_speaker)]
+        scale = float(getattr(self.settings, "narration_piper_length_scale", 1.0) or 1.0)
+        if abs(scale - 1.0) > 0.001:
+            command += ["--length-scale", f"{scale:g}"]
+        try:
+            result = subprocess.run(
+                command, input=text, text=True, capture_output=True,
+                timeout=max(120, int(self.settings.narration_tts_timeout_seconds)))
+        except (OSError, subprocess.SubprocessError) as error:
+            raise RemoteServiceError(f"Piper TTS failed to start: {error}") from error
+        if result.returncode != 0:
+            raise RemoteServiceError(
+                f"Piper TTS failed ({result.returncode}): {result.stderr[-800:]}")
+        if not output_path.is_file() or output_path.stat().st_size == 0:
+            raise RemoteServiceError("Piper produced no audio data")
+        logger.info("Piper narration written: %s (%.1f KB)",
+                    output_path.name, output_path.stat().st_size / 1024)
         return output_path
 
     def _kokoro_pipeline(self):

@@ -66,19 +66,101 @@ def test_manifest_windows_cover_timeline(tmp_path):
     builder = SceneManifestBuilder(settings, FakeLLM())
     plan = ScriptPlan(topic="Elephants", title="T", script=SCRIPT)
     alignment = AlignmentResult(
-        segments=[AlignSegment(start=0, end=5, text="first"), AlignSegment(start=5, end=12, text="second")],
-        duration_seconds=12.0, source="whisperx")
+        segments=[
+            AlignSegment(start=0, end=1.1, text="First sentence."),
+            AlignSegment(start=1.1, end=2.2, text="Second sentence."),
+            AlignSegment(start=2.2, end=4.5, text="Third sentence."),
+            AlignSegment(start=4.5, end=6.0, text="Fourth sentence."),
+            AlignSegment(start=6.0, end=8.0, text="Fifth sentence."),
+            AlignSegment(start=8.0, end=10.0, text="Sixth sentence."),
+            AlignSegment(start=10.0, end=12.0, text="Seventh sentence."),
+        ], duration_seconds=12.0, source="whisperx")
 
     manifest = builder.build(plan, alignment, 12.0, "narration.wav")
 
-    assert 4 <= len(manifest.scenes) <= 6
+    assert 4 <= len(manifest.scenes) <= 7
     assert manifest.scenes[0].start == 0
     assert abs(manifest.scenes[-1].end - 12.0) < 1e-6
     assert all(scene.prompt for scene in manifest.scenes)
     assert manifest.thumbnail_prompt
+    assert manifest.thumbnail_text == "WHAT DID THEY DO?"
     assert manifest.alignment_source == "whisperx"
     # Every scene window maps back to narration text from the alignment.
-    assert manifest.scenes[0].text == "first"
+    joined = " ".join(scene.text for scene in manifest.scenes)
+    assert joined == "First sentence. Second sentence. Third sentence. Fourth sentence. Fifth sentence. Sixth sentence. Seventh sentence."
+    assert all(scene.end > scene.start for scene in manifest.scenes)
+
+
+def test_manifest_scene_windows_do_not_duplicate_or_drop_aligned_text():
+    windows = SceneManifestBuilder._time_windows(
+        AlignmentResult(segments=[
+            AlignSegment(start=0, end=1.2, text="A gathers roots."),
+            AlignSegment(start=1.2, end=2.5, text="B sharpens a stone tool."),
+            AlignSegment(start=2.5, end=3.7, text="C carries water home."),
+            AlignSegment(start=3.7, end=5.0, text="D tends the fire."),
+        ], duration_seconds=5.0),
+        duration_seconds=5.0, scene_count=2, target_seconds=2.5,
+    )
+    narration = " ".join(text for _start, _end, text in windows).replace(".", "")
+    assert narration == "A gathers roots B sharpens a stone tool C carries water home D tends the fire"
+    assert windows[0][0] == 0.0
+    assert windows[-1][1] == 5.0
+
+
+def test_long_aligned_utterance_is_split_into_readable_shots():
+    text = "At dawn the group leaves camp to gather roots while another hunter follows fresh tracks toward the river."
+    windows = SceneManifestBuilder._time_windows(
+        AlignmentResult(segments=[AlignSegment(start=0, end=10, text=text)], duration_seconds=10),
+        duration_seconds=10, scene_count=4, target_seconds=2.5,
+    )
+    assert len(windows) >= 3
+    assert " ".join(window[2] for window in windows) == text
+    assert max(end - start for start, end, _text in windows) <= 3.6
+
+
+def test_scene_windows_keep_silence_gaps_on_the_audio_timeline():
+    windows = SceneManifestBuilder._time_windows(
+        AlignmentResult(segments=[
+            AlignSegment(start=0.8, end=2.0, text="The sun rises."),
+            AlignSegment(start=4.5, end=5.5, text="The camp wakes."),
+        ], duration_seconds=7.0),
+        duration_seconds=7.0, scene_count=3, target_seconds=2.5,
+    )
+    assert windows[0][0] == 0.0
+    assert windows[-1][1] == 7.0
+    assert sum(end - start for start, end, _text in windows) == 7.0
+    assert "The sun rises." in windows[0][2]
+    assert "The camp wakes." in windows[-1][2]
+
+
+def test_missing_scene_art_does_not_reuse_an_unrelated_image(tmp_path):
+    from app.narration.models import Scene, SceneManifest
+    from app.narration.orchestrator import NarrationOrchestrator
+    from app.narration.video_assembler import AssemblyError
+
+    image = tmp_path / "scene.png"
+    image.write_bytes(b"available")
+    manifest = SceneManifest(
+        topic="t", scenes=[
+            Scene(index=1, start=0, end=2, prompt="one", image_path=str(image)),
+            Scene(index=2, start=2, end=4, prompt="two", image_path=None),
+        ])
+    with pytest.raises(AssemblyError, match="scene-specific image was produced"):
+        NarrationOrchestrator._fill_missing_images(manifest)
+    assert manifest.scenes[1].image_path is None
+
+
+def test_thumbnail_crop_and_headline_are_written(tmp_path):
+    from PIL import Image
+    from app.narration.video_assembler import VideoAssembler
+
+    source = tmp_path / "source.png"
+    output = tmp_path / "thumbnail.png"
+    Image.new("RGB", (900, 900), (90, 125, 80)).save(source)
+    assembler = VideoAssembler.__new__(VideoAssembler)
+    result = assembler.make_thumbnail(source, output, "ALL DAY?")
+    assert result == output
+    assert Image.open(output).size == (1280, 720)
 
 
 def test_manifest_falls_back_when_llm_returns_nothing(tmp_path):

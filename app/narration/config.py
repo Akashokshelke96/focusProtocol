@@ -32,6 +32,8 @@ JOB_SUBDIRS = (
     "script",
     "audio",
     "alignment",
+    "characters",
+    "references",
     "manifest",
     "images",
     "thumbnail",
@@ -108,12 +110,35 @@ def target_word_range(duration_minutes: float) -> tuple[int, int, int]:
 
 
 def require_remote(settings: Settings) -> None:
-    """Fail early with an actionable message when remote services are unflagged."""
-    if not settings.narration_remote_enabled:
+    """Validate that the configured pipeline can actually reach its backends.
+
+    Local Piper/Diffusers runs are valid without ``NARRATION_REMOTE_ENABLED``;
+    only a backend that needs a URL is rejected when that URL is missing.
+    """
+    problems: list[str] = []
+    if settings.narration_tts_backend == "http" and not settings.narration_tts_url:
+        problems.append("NARRATION_TTS_URL is empty (or use NARRATION_TTS_BACKEND=piper_local)")
+    if settings.narration_tts_backend == "piper_local":
+        if not settings.narration_piper_model:
+            problems.append("NARRATION_PIPER_MODEL is empty")
+        elif not Path(settings.narration_piper_model).is_file():
+            problems.append(f"NARRATION_PIPER_MODEL does not exist: {settings.narration_piper_model}")
+    if settings.narration_image_backend == "comfyui" and not settings.comfy_base_url:
+        problems.append("COMFY_BASE_URL is empty (or use NARRATION_IMAGE_BACKEND=diffusers)")
+    if settings.narration_image_backend == "diffusers" and not settings.narration_image_model:
+        problems.append("NARRATION_IMAGE_MODEL is empty")
+    if problems:
         raise RuntimeError(
-            "The narrated pipeline runs TTS/WhisperX/ComfyUI on RunPod. "
-            "Set NARRATION_REMOTE_ENABLED=true and configure the service URLs."
+            "The narrated pipeline is not configured: " + "; ".join(problems)
+            + ". Set NARRATION_REMOTE_ENABLED=true when using RunPod URLs."
         )
+
+
+def image_model_label(settings: Settings) -> str:
+    """Human-readable backend/model label used in job metadata."""
+    if settings.narration_image_backend == "diffusers":
+        return f"diffusers:{settings.narration_image_model}+{settings.narration_ip_adapter_weight}"
+    return f"comfyui:{settings.comfy_workflow_path}"
 
 
 def remote_health_targets(settings: Settings) -> dict[str, str]:

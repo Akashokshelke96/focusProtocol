@@ -1,0 +1,27 @@
+# AI-image narration studio extras.
+#
+# Install alongside the base project requirements:
+#   pip install -r requirements.txt -r deploy/requirements-narration-studio.txt
+#
+# PyTorch is intentionally NOT pinned here. Colab and the RunPod PyTorch
+# images already ship a CUDA build. Installing a second torch wheel on those
+# hosts can replace the working CUDA build with a CPU-only wheel.
+#
+# These base settings dependencies are enough to import the narration studio
+# in a fresh Colab runtime; the full project requirements pin packages that
+# Colab already provides.
+pydantic>=2.0.0
+pydantic-settings>=2.0.0
+python-dotenv>=1.0.0
+diffusers>=0.31.0,<0.36
+transformers>=4.44.2,<5
+accelerate>=0.33.0
+safetensors>=0.4.5
+huggingface_hub>=0.24.0,<1.0
+sentencepiece>=0.2.0
+protobuf>=4.25.0
+# Local Piper TTS used by the Colab smoke test and CPU-only pods.
+piper-tts==1.8.0
+# Quality checks and audio helpers already used by the narration pipeline.
+imagehash>=4.3.0
+soundfile>=0.12.1

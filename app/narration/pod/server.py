@@ -113,10 +113,27 @@ def health() -> dict:
             comfy["reachable"] = response.status_code < 500
         except Exception as error:  # noqa: BLE001
             comfy["error"] = str(error)[:200]
+    image: dict[str, Any] = {
+        "backend": settings.narration_image_backend,
+        "model": (settings.narration_image_model
+                  if settings.narration_image_backend == "diffusers"
+                  else settings.comfy_workflow_path),
+    }
+    try:
+        from app.narration.image_backends import build_image_backend
+        backend = build_image_backend(settings)
+        try:
+            image.update(backend.health())
+        finally:
+            backend.close()
+    except Exception as error:  # noqa: BLE001
+        image["reachable"] = False
+        image["error"] = str(error)[:300]
     return {
         "status": "ok",
         "tts_backend": settings.narration_tts_backend,
         "align_backend": settings.narration_align_backend,
+        "image_backend": image,
         "comfyui": comfy,
         "timestamp": datetime.utcnow().isoformat(),
     }

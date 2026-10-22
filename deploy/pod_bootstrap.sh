@@ -2,42 +2,58 @@
 # ONE-SHOT pod bootstrap + run for the narrated pipeline.
 #
 # Assumes this script sits inside the project folder on the pod
-# (e.g. /workspace/long-form-video-generator/deploy/pod_bootstrap.sh).
+# (e.g. /workspace/narration/deploy/pod_bootstrap.sh).
 #
 # It reuses an already-running ComfyUI (or installs one), downloads the
-# FLUX.1-schnell fp8 model set, installs the project + pod extras, writes
-# .env, then starts the batch server. Idempotent: safe to re-run.
+# FLUX.1-schnell fp8 all-in-one checkpoint, installs the project + pod extras,
+# writes .env, then starts the batch server. Idempotent: safe to re-run.
 #
 # Usage (pod Web terminal / JupyterLab terminal):
-#   cd /workspace/long-form-video-generator
+#   cd /workspace/narration
 #   GEMINI_API_KEY=your_key POD_BATCH_TOKEN=your_secret bash deploy/pod_bootstrap.sh
 #
 # Optional overrides:
 #   COMFY_DIR=/path/to/ComfyUI   BATCH_PORT=8000   NARRATION_DURATION_MINUTES=10
+#   PYTHON=/path/to/python       INSTALL_WHISPERX=1
 set -euo pipefail
 
 PROJECT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 WORKSPACE="${WORKSPACE:-/workspace}"
+export HF_HOME="${HF_HOME:-$WORKSPACE/hf-cache}"
 BATCH_PORT="${BATCH_PORT:-8000}"
 TOKEN="${POD_BATCH_TOKEN:-}"
 LLM_KEY="${GEMINI_API_KEY:-${OPENROUTER_API_KEY:-}}"
+
+# Prefer python3; fall back to python. Override with PYTHON=/path/to/python.
+PYTHON="${PYTHON:-}"
+PYTHON_EXPLICIT=0
+[ -n "$PYTHON" ] && PYTHON_EXPLICIT=1
+if [ -z "$PYTHON" ]; then
+  if command -v python3 >/dev/null 2>&1; then PYTHON="python3";
+  elif command -v python >/dev/null 2>&1; then PYTHON="python";
+  else echo "ERROR: no python interpreter found on PATH"; exit 1; fi
+fi
+echo "==> Python: $PYTHON ($($PYTHON --version 2>&1))"
 
 comfy_up() { curl -s "http://127.0.0.1:8188/system_stats" >/dev/null 2>&1; }
 
 cd "$PROJECT_DIR"
 echo "==> Project: $PROJECT_DIR"
 
-echo "==> [1/6] System packages (ffmpeg, git)"
+echo "==> [1/7] System packages (ffmpeg, git, espeak-ng, curl)"
 if command -v apt-get >/dev/null 2>&1; then
   apt-get update -y >/dev/null 2>&1 || true
-  apt-get install -y ffmpeg git git-lfs curl >/dev/null 2>&1 || true
+  # espeak-ng is required by Kokoro TTS (English out-of-dictionary fallback).
+  apt-get install -y ffmpeg git git-lfs curl espeak-ng >/dev/null 2>&1 || true
+else
+  echo "    apt-get not found; ensure ffmpeg + espeak-ng are installed."
 fi
 
-echo "==> [2/6] Locating ComfyUI"
+echo "==> [2/7] Locating ComfyUI"
 COMFY_DIR="${COMFY_DIR:-}"
 if [ -z "$COMFY_DIR" ]; then
-  for candidate in /workspace/ComfyUI /workspace/comfyui /opt/ComfyUI /root/ComfyUI /ComfyUI; do
-    if [ -d "$candidate" ]; then COMFY_DIR="$candidate"; break; fi
+  for candidate in /workspace/runpod-slim/ComfyUI /workspace/ComfyUI /workspace/comfyui /opt/ComfyUI /root/ComfyUI /ComfyUI; do
+    if [ -d "$candidate/models" ]; then COMFY_DIR="$candidate"; break; fi
   done
 fi
 if [ -z "$COMFY_DIR" ] && comfy_up; then
@@ -51,29 +67,72 @@ fi
 echo "    ComfyUI dir: $COMFY_DIR"
 [ -d "$COMFY_DIR/models" ] || { echo "ERROR: $COMFY_DIR/models not found; set COMFY_DIR"; exit 1; }
 
-echo "==> [3/6] FLUX.1-schnell fp8 checkpoint (all-in-one, Apache-2.0, ~17GB first run)"
+# Reuse ComfyUI's own venv so Kokoro can use the same CUDA torch (unless PYTHON was set).
+if [ "$PYTHON_EXPLICIT" = "0" ]; then
+  for candidate_py in \
+      "$COMFY_DIR/../.venv-cu128/bin/python" \
+      "$COMFY_DIR/../.venv/bin/python" \
+      "$COMFY_DIR/.venv/bin/python" \
+      "$(dirname "$COMFY_DIR")/venv/bin/python"; do
+    if [ -x "$candidate_py" ]; then
+      PYTHON="$candidate_py"
+      echo "    using ComfyUI venv python: $PYTHON"
+      break
+    fi
+  done
+fi
+
+echo "==> [3/7] Disk space check"
+AVAIL_GB="$(df -BG "$COMFY_DIR" | awk 'NR==2{gsub(/G/,"",$4); print $4}')"
+echo "    free space at $COMFY_DIR: ${AVAIL_GB:-?} GB"
+if [ -n "$AVAIL_GB" ] && [ "$AVAIL_GB" -lt 40 ]; then
+  echo "    WARNING: less than 40 GB free. FLUX fp8 (~17 GB) + torch + models need room."
+fi
+
+echo "==> [4/7] FLUX.1-schnell fp8 checkpoint (all-in-one, Apache-2.0, ~17GB first run)"
 mkdir -p "$COMFY_DIR/models/checkpoints"
 CKPT="$COMFY_DIR/models/checkpoints/flux1-schnell-fp8.safetensors"
+NEW_CKPT=0
 if [ -f "$CKPT" ]; then
   echo "    already present"
 else
   echo "    downloading flux1-schnell-fp8.safetensors (public, no HF login)"
-  curl -L --fail -o "$CKPT" \
+  curl -L --fail --retry 5 --retry-delay 5 -C - -o "$CKPT" \
     "https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors"
+  NEW_CKPT=1
 fi
 
-echo "==> [4/6] Project + pod Python extras"
-python -m pip install -q -r requirements.txt -r deploy/requirements-pod.txt
+echo "==> [5/7] Project + pod Python extras"
+"$PYTHON" -m pip install -q --upgrade pip
+"$PYTHON" -m pip install -q -r requirements.txt -r deploy/requirements-pod.txt \
+  -r deploy/requirements-narration-studio.txt
+if [ "${INSTALL_WHISPERX:-0}" = "1" ]; then
+  echo "    INSTALL_WHISPERX=1 -> installing optional whisperx (may affect torch)"
+  "$PYTHON" -m pip install -q -r deploy/requirements-pod-optional.txt
+  echo "    verify: $PYTHON -c \"import torch; print(torch.__version__, torch.cuda.is_available())\""
+fi
 
-echo "==> [5/6] Writing .env"
+echo "==> [6/7] Writing .env"
 if [ ! -f .env ]; then
   cat > .env <<EOF
 # --- auto-generated by pod_bootstrap.sh ---
 COMFY_BASE_URL=http://127.0.0.1:8188
 COMFY_WORKFLOW_PATH=workflows/flux_schnell_api.json
+COMFY_STEPS=4
+COMFY_CFG=1.0
+COMFY_SAMPLER=euler
+COMFY_SCHEDULER=simple
 NARRATION_REMOTE_ENABLED=true
 NARRATION_TTS_BACKEND=kokoro_local
 NARRATION_ALIGN_BACKEND=whisperx_local
+# Reference-conditioned image path (SDXL + IP-Adapter). ComfyUI/FLUX remains
+# installed for legacy workflows; switch to comfyui only for a reference-aware
+# custom workflow.
+NARRATION_IMAGE_BACKEND=diffusers
+NARRATION_IMAGE_DEVICE=cuda
+NARRATION_IMAGE_CPU_OFFLOAD=true
+NARRATION_IMAGE_MODEL=stabilityai/stable-diffusion-xl-base-1.0
+HF_HOME=$WORKSPACE/hf-cache
 NARRATION_TARGET_DURATION_MINUTES=${NARRATION_DURATION_MINUTES:-10}
 NARRATION_BATCH_WORKSPACE=$WORKSPACE/batches
 POD_BATCH_HOST=0.0.0.0
@@ -87,17 +146,24 @@ else
   echo "    .env already exists; leaving it untouched"
 fi
 
-echo "==> [6/6] Starting services"
+echo "==> [7/7] Starting services"
+if comfy_up && [ "$NEW_CKPT" = "1" ]; then
+  # ComfyUI caches the model list; a freshly added checkpoint needs a restart.
+  echo "    restarting ComfyUI so it detects the new checkpoint"
+  pkill -f "$COMFY_DIR/main.py" 2>/dev/null || true
+  sleep 4
+fi
 if comfy_up; then
   echo "    ComfyUI already running on 8188"
 else
   echo "    starting ComfyUI on 0.0.0.0:8188 (log: $WORKSPACE/comfyui.log)"
-  nohup python "$COMFY_DIR/main.py" --listen 0.0.0.0 --port 8188 --enable-cors-header \
+  nohup "$PYTHON" "$COMFY_DIR/main.py" --listen 0.0.0.0 --port 8188 --enable-cors-header \
     > "$WORKSPACE/comfyui.log" 2>&1 &
-  sleep 5
+  sleep 8
+  comfy_up && echo "    ComfyUI is up" || echo "    WARNING: ComfyUI not responding yet; check $WORKSPACE/comfyui.log"
 fi
 echo ""
 echo "==> Batch server starting on 0.0.0.0:${BATCH_PORT} (Ctrl+C to stop)"
 echo "    Health: curl http://127.0.0.1:${BATCH_PORT}/health"
 echo "    Expose port ${BATCH_PORT} in the RunPod pod template if not already."
-exec python -m app.narration.pod.server
+exec "$PYTHON" -m app.narration.pod.server

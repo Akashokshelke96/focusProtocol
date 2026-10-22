@@ -26,7 +26,7 @@ from app.narration.pod_client import PodBatchClient, PodClientError
 
 logger = get_logger("narration.batch_cli")
 
-PHASE_ORDER = ("SCRIPT", "TTS", "ALIGN", "MANIFEST", "IMAGES", "RENDER", "PACKAGE")
+PHASE_ORDER = ("SCRIPT", "TTS", "ALIGN", "BIBLE", "MANIFEST", "IMAGES", "RENDER", "PACKAGE")
 _STAGE_MARK = {"done": "OK", "failed": "XX", "pending": ".."}
 
 

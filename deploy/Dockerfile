@@ -11,10 +11,11 @@ FROM nvidia/cuda:12.1.1-cudnn8-devel-ubuntu22.04
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1 \
+    HF_HOME=/workspace/hf-cache \
     WORKSPACE=/workspace
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        python3.10 python3-pip python3.10-venv git git-lfs ffmpeg curl \
+        python3.10 python3-pip python3.10-venv git git-lfs ffmpeg curl espeak-ng \
     && rm -rf /var/lib/apt/lists/* \
     && ln -sf /usr/bin/python3.10 /usr/bin/python
 
@@ -33,10 +34,13 @@ RUN mkdir -p /workspace/ComfyUI/models/checkpoints && \
     curl -L -o /workspace/ComfyUI/models/checkpoints/flux1-schnell-fp8.safetensors \
       https://huggingface.co/Comfy-Org/flux1-schnell/resolve/main/flux1-schnell-fp8.safetensors
 
-# Project + pod extras
+# Project + pod extras. The narration-studio extras install Diffusers,
+# Transformers, Accelerate and Piper so the default SDXL + IP-Adapter backend
+# works without a second ComfyUI-specific image.
 COPY . /workspace/long-form-video-generator
 WORKDIR /workspace/long-form-video-generator
-RUN pip install -r requirements.txt -r deploy/requirements-pod.txt
+RUN pip install -r requirements.txt -r deploy/requirements-pod.txt \
+    -r deploy/requirements-narration-studio.txt
 
 # Start ComfyUI in the background and the batch server in the foreground.
 COPY deploy/entrypoint.sh /workspace/entrypoint.sh

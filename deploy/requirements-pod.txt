@@ -6,4 +6,9 @@ uvicorn[standard]>=0.29
 websocket-client>=1.7.0
 kokoro>=0.9.4
 soundfile>=0.12.1
-whisperx>=3.3.1
+# NOTE: WhisperX is intentionally NOT installed here. Recent whisperx releases
+# pin `torch~=2.8` and can force a PyTorch downgrade that breaks the pod's
+# CUDA-enabled ComfyUI install. The pipeline falls back to a deterministic
+# estimated alignment, which is sufficient because scenes are evenly spaced.
+# If you still want real word alignment, install deploy/requirements-pod-optional.txt
+# AFTER confirming it does not touch torch, or install it in an isolated venv.

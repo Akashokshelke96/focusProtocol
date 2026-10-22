@@ -212,28 +212,28 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     narration_target_duration_minutes: int = Field(default=10, alias="NARRATION_TARGET_DURATION_MINUTES")
     narration_scene_seconds: float = Field(default=2.5, gt=0, alias="NARRATION_SCENE_SECONDS")
-    narration_min_scenes: int = Field(default=200, ge=1, alias="NARRATION_MIN_SCENES")
-    narration_max_scenes: int = Field(default=260, ge=1, alias="NARRATION_MAX_SCENES")
+    # Scene count is duration-driven (~2.5s per image). These bounds are only
+    # safety rails, so a 90-minute video is not silently capped at 260 images.
+    narration_min_scenes: int = Field(default=1, ge=1, alias="NARRATION_MIN_SCENES")
+    narration_max_scenes: int = Field(default=6000, ge=1, alias="NARRATION_MAX_SCENES")
     narration_manifest_batch_size: int = Field(default=20, ge=1, le=60, alias="NARRATION_MANIFEST_BATCH_SIZE")
     narration_max_retries: int = Field(default=3, ge=0, le=10, alias="NARRATION_MAX_RETRIES")
     narration_script_fallback: bool = Field(default=False, alias="NARRATION_SCRIPT_FALLBACK")
     narration_style_prefix: str = Field(
-        default=("Flat 2D hand-drawn stickman story cartoon: characters have large round white heads, simple "
-                 "dot eyes and small noses, messy brown hair, and thin line-drawn bodies wearing simple colored "
-                 "clothing in a muted warm palette; environments are fully illustrated with layered hand-drawn "
-                 "line shading, dark navy night skies dotted with stars, grey rock and cave textures, silhouetted "
-                 "bushes and trees, and warm orange firelight with soft ambient glow; thick clean black outlines, "
-                 "flat fills with subtle shading, cinematic warm-versus-cool color contrast, 16:9, no text"),
+        default=("Cinematic painterly documentary illustration, textured gouache and oil brushwork, "
+                 "natural warm light with deep atmospheric shadows, muted earth tones lifted by one warm "
+                 "accent colour, detailed but slightly stylized historical reconstruction, expressive faces "
+                 "and readable silhouettes, layered foreground and background depth, 16:9, no text, no "
+                 "lettering, no logos, no watermark"),
         alias="NARRATION_STYLE_PREFIX")
-    narration_characters: str = Field(
-        default=("The same two recurring characters must appear and be drawn identically in every scene: a man "
-                 "with messy short brown hair wearing a brown fur tunic, and a woman with a brown hair bun wearing "
-                 "a long brown dress; both have large round white heads, simple dot eyes and thin line-drawn limbs"),
-        alias="NARRATION_CHARACTERS")
+    # Optional free-text cast hint. The persistent character bible is the
+    # authoritative cast; this is only creative direction passed to its builder.
+    narration_characters: str = Field(default="", alias="NARRATION_CHARACTERS")
+    narration_creative_direction: str = Field(default="", alias="NARRATION_CREATIVE_DIRECTION")
     narration_negative_prompt: str = Field(
-        default=("3d, realistic, photorealistic, anime, photo texture, hard gradients, text, words, letters, "
-                 "numbers, caption, watermark, signature, logo, blurry, low quality, deformed, extra limbs, "
-                 "malformed hands"),
+        default=("3d render, cartoon, anime, stick figure, line art, flat vector, photo texture, hard "
+                 "gradients, text, words, letters, numbers, caption, watermark, signature, logo, blurry, "
+                 "low quality, deformed, extra limbs, malformed hands, duplicate person"),
         alias="NARRATION_NEGATIVE_PROMPT")
     narration_seed: int = Field(
         default=0, ge=0,
@@ -243,6 +243,60 @@ class Settings(BaseSettings):
     narration_video_encoder: str = Field(default="", alias="NARRATION_VIDEO_ENCODER")
     narration_export_dir: str = Field(default="output/narration", alias="NARRATION_EXPORT_DIR")
     narration_export_enabled: bool = Field(default=True, alias="NARRATION_EXPORT_ENABLED")
+
+    # Narration-specific LLM routing. Kept separate from the shared
+    # LLM_PROVIDER setting so the jazz/content pipeline keeps its behaviour.
+    narration_llm_provider: str = Field(
+        default="auto", pattern="^(auto|openrouter|omniroute|gemini)$",
+        alias="NARRATION_LLM_PROVIDER")
+    narration_llm_model: str = Field(default="", alias="NARRATION_LLM_MODEL")
+    narration_openrouter_model: str = Field(
+        default="google/gemma-4-31b-it:free", alias="NARRATION_OPENROUTER_MODEL")
+    narration_llm_fallback_models: str = Field(
+        default="google/gemma-4-26b-a4b-it:free,nvidia/nemotron-3-super-120b-a12b:free",
+        alias="NARRATION_LLM_FALLBACK_MODELS")
+    narration_llm_timeout_seconds: int = Field(default=120, ge=10, alias="NARRATION_LLM_TIMEOUT_SECONDS")
+    narration_llm_max_retries: int = Field(default=2, ge=0, le=6, alias="NARRATION_LLM_MAX_RETRIES")
+    narration_openrouter_api_key: str = Field(default="", alias="OPENROUTER_API_KEY_NARRATOR")
+    narration_gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY_NARRATOR")
+    narration_omniroute_api_key: str = Field(default="", alias="OMNIROUTE_API_KEY_NARRATOR")
+
+    # Persistent characters + reference-conditioned image generation.
+    narration_image_backend: str = Field(
+        default="diffusers", pattern="^(diffusers|comfyui)$", alias="NARRATION_IMAGE_BACKEND")
+    narration_image_width: int = Field(default=1024, ge=512, alias="NARRATION_IMAGE_WIDTH")
+    narration_image_height: int = Field(default=576, ge=320, alias="NARRATION_IMAGE_HEIGHT")
+    narration_image_steps: int = Field(default=28, ge=4, le=80, alias="NARRATION_IMAGE_STEPS")
+    narration_image_guidance: float = Field(default=6.5, ge=0, le=20, alias="NARRATION_IMAGE_GUIDANCE")
+    narration_image_device: str = Field(default="auto", alias="NARRATION_IMAGE_DEVICE")
+    narration_image_dtype: str = Field(
+        default="float16", pattern="^(float16|bfloat16|float32)$", alias="NARRATION_IMAGE_DTYPE")
+    narration_image_cpu_offload: bool = Field(default=True, alias="NARRATION_IMAGE_CPU_OFFLOAD")
+    narration_image_model: str = Field(
+        default="stabilityai/stable-diffusion-xl-base-1.0", alias="NARRATION_IMAGE_MODEL")
+    narration_image_vae: str = Field(default="", alias="NARRATION_IMAGE_VAE")
+    narration_ip_adapter_repo: str = Field(default="h94/IP-Adapter", alias="NARRATION_IP_ADAPTER_REPO")
+    narration_ip_adapter_subfolder: str = Field(default="sdxl_models", alias="NARRATION_IP_ADAPTER_SUBFOLDER")
+    narration_ip_adapter_weight: str = Field(
+        default="ip-adapter-plus_sdxl_vit-h.safetensors", alias="NARRATION_IP_ADAPTER_WEIGHT")
+    narration_ip_adapter_scale: float = Field(default=0.65, ge=0, le=1.5, alias="NARRATION_IP_ADAPTER_SCALE")
+    narration_reference_views: str = Field(default="full_body,portrait", alias="NARRATION_REFERENCE_VIEWS")
+    narration_reference_width: int = Field(default=832, ge=512, alias="NARRATION_REFERENCE_WIDTH")
+    narration_reference_height: int = Field(default=1216, ge=512, alias="NARRATION_REFERENCE_HEIGHT")
+    narration_reference_steps: int = Field(default=32, ge=4, le=80, alias="NARRATION_REFERENCE_STEPS")
+    narration_thumbnail_width: int = Field(default=1280, ge=640, alias="NARRATION_THUMBNAIL_WIDTH")
+    narration_thumbnail_height: int = Field(default=720, ge=360, alias="NARRATION_THUMBNAIL_HEIGHT")
+    narration_quality_enabled: bool = Field(default=True, alias="NARRATION_QUALITY_ENABLED")
+    narration_quality_min_stddev: float = Field(default=10.0, ge=0, alias="NARRATION_QUALITY_MIN_STDDEV")
+    narration_quality_min_entropy: float = Field(default=3.0, ge=0, alias="NARRATION_QUALITY_MIN_ENTROPY")
+    narration_duplicate_hamming_threshold: int = Field(
+        default=4, ge=0, le=20, alias="NARRATION_DUPLICATE_HAMMING_THRESHOLD")
+    narration_identity_check_enabled: bool = Field(default=True, alias="NARRATION_IDENTITY_CHECK_ENABLED")
+    narration_identity_min_similarity: float = Field(
+        default=0.40, ge=-1, le=1, alias="NARRATION_IDENTITY_MIN_SIMILARITY")
+    narration_identity_retry_scale_boost: float = Field(
+        default=0.15, ge=0, le=0.75, alias="NARRATION_IDENTITY_RETRY_SCALE_BOOST")
+    narration_manifest_reuse: bool = Field(default=True, alias="NARRATION_MANIFEST_REUSE")
 
     # Remote RunPod services
     narration_remote_enabled: bool = Field(default=False, alias="NARRATION_REMOTE_ENABLED")
@@ -257,14 +311,29 @@ class Settings(BaseSettings):
     narration_align_token: str = Field(default="", alias="NARRATION_ALIGN_TOKEN")
     narration_align_timeout_seconds: int = Field(default=900, alias="NARRATION_ALIGN_TIMEOUT_SECONDS")
 
-    # Audio backends: "http" (remote services) or local libraries on the pod
-    narration_tts_backend: str = Field(default="http", pattern="^(http|kokoro_local)$", alias="NARRATION_TTS_BACKEND")
+    # Audio backends: "http" (remote services), or local libraries on the pod/Colab.
+    narration_tts_backend: str = Field(
+        default="http", pattern="^(http|kokoro_local|piper_local)$", alias="NARRATION_TTS_BACKEND")
     narration_align_backend: str = Field(default="http", pattern="^(http|whisperx_local)$", alias="NARRATION_ALIGN_BACKEND")
     narration_kokoro_lang: str = Field(default="a", alias="NARRATION_KOKORO_LANG")
     narration_kokoro_sample_rate: int = Field(default=24000, alias="NARRATION_KOKORO_SAMPLE_RATE")
+    narration_piper_binary: str = Field(default="piper", alias="NARRATION_PIPER_BINARY")
+    narration_piper_model: str = Field(default="", alias="NARRATION_PIPER_MODEL")
+    narration_piper_config: str = Field(default="", alias="NARRATION_PIPER_CONFIG")
+    narration_piper_speaker: str = Field(default="", alias="NARRATION_PIPER_SPEAKER")
+    narration_piper_sample_rate: int = Field(default=22050, alias="NARRATION_PIPER_SAMPLE_RATE")
+    # 1.0 is the voice's natural pace (~165-175 wpm for lessac-medium).
+    # Raise it to stretch the narration toward a target length, e.g. 1.17
+    # turns a 8.5-minute read into roughly 10 minutes.
+    narration_piper_length_scale: float = Field(
+        default=1.0, gt=0.5, le=2.0, alias="NARRATION_PIPER_LENGTH_SCALE")
     narration_whisperx_model: str = Field(default="large-v3", alias="NARRATION_WHISPERX_MODEL")
     narration_whisperx_device: str = Field(default="cuda", alias="NARRATION_WHISPERX_DEVICE")
     narration_whisperx_compute_type: str = Field(default="float16", alias="NARRATION_WHISPERX_COMPUTE_TYPE")
+
+    # Hugging Face access for gated model downloads (SDXL/IP-Adapter, Kokoro).
+    hf_token: str = Field(default="", alias="HF_TOKEN")
+    hugging_face_hub_token: str = Field(default="", alias="HUGGING_FACE_HUB_TOKEN")
 
     # Pod batch runner
     narration_batch_workspace: str = Field(default="workspace/batches", alias="NARRATION_BATCH_WORKSPACE")
