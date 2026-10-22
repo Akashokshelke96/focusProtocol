@@ -57,6 +57,17 @@ def pip_install() -> None:
          "-r", "deploy/requirements-narration-studio.txt"])
 
 
+def ensure_system_tools() -> None:
+    """Colab normally ships ffmpeg and DejaVu fonts; install only if missing."""
+    ffmpeg_ok = bool(shutil.which("ffmpeg"))
+    dejavu = Path("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf")
+    if ffmpeg_ok and dejavu.is_file():
+        return
+    print("Installing ffmpeg and DejaVu fonts...", flush=True)
+    run(["apt-get", "-qq", "update"])
+    run(["apt-get", "-qq", "install", "-y", "ffmpeg", "fonts-dejavu-core"])
+
+
 def check_gpu(min_vram_gb: float = 14.0) -> None:
     try:
         import torch
@@ -143,9 +154,12 @@ def configure(width: int, height: int, fps: int, seed: int, model: Path,
 
 
 def package(job_id: str, report: dict) -> None:
-    job_dir = REPO_ROOT / "jobs" / job_id
-    video = Path(report.get("video") or job_dir / "output" / "rendered.mp4")
-    thumbnail = Path(report.get("thumbnail") or job_dir / "thumbnail" / "thumbnail.png")
+    # Resolve both sides: build_report() returns paths relative to the
+    # repository, while REPO_ROOT is absolute.
+    job_dir = (REPO_ROOT / "jobs" / job_id).resolve()
+    video = Path(report.get("video") or job_dir / "output" / "rendered.mp4").resolve()
+    thumbnail = Path(
+        report.get("thumbnail") or job_dir / "thumbnail" / "thumbnail.png").resolve()
     if not video.is_file():
         print("No rendered MP4 was produced. Read the report above.")
         return
@@ -184,6 +198,7 @@ def main() -> int:
 
     os.chdir(REPO_ROOT)
     print("Repository:", REPO_ROOT)
+    ensure_system_tools()
     check_gpu()
     if not args.no_install:
         pip_install()
