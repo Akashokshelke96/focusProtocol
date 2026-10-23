@@ -249,6 +249,10 @@ def configure(width: int, height: int, fps: int, seed: int, model: Path,
         "CHANNEL_BRAND_NAME": "Focus Protocol",
         "HF_TOKEN": hf_token,
     }
+    # Environment values win over a stale .env that may have been imported by
+    # an earlier stage of this runtime.
+    os.environ["NARRATION_IMAGE_DEVICE"] = "cuda"
+    os.environ["NARRATION_IMAGE_CPU_OFFLOAD"] = "false"
     path = write_env(values)
     print("Wrote", path)
 

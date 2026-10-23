@@ -234,10 +234,10 @@ class DiffusersImageBackend(ImageBackend):
             pipe.enable_vae_slicing()
         except Exception:  # noqa: BLE001 - optional optimisation
             pass
-        try:
-            pipe.enable_attention_slicing()
-        except Exception:  # noqa: BLE001 - optional optimisation
-            pass
+        # Do not call enable_attention_slicing() here. Diffusers replaces the
+        # IP-Adapter attention processors with sliced ones, which pass a tuple
+        # as encoder_hidden_states and crash with "'tuple' has no attribute
+        # 'shape'" on SDXL. See diffusers issues #7263 and #9448.
 
         if self.device == "cuda":
             if self.settings.narration_image_cpu_offload:
@@ -245,6 +245,13 @@ class DiffusersImageBackend(ImageBackend):
                 self.on_log("Enabled model CPU offload (low-VRAM safe)")
             else:
                 pipe.to("cuda")
+                # load_ip_adapter() creates this component while the pipeline
+                # is still on CPU; moving the pipeline does not always move it.
+                try:
+                    if getattr(pipe, "image_encoder", None) is not None:
+                        pipe.image_encoder.to("cuda")
+                except Exception as error:  # noqa: BLE001 - keep the pipeline usable
+                    self.on_log(f"Could not move IP-Adapter image encoder to CUDA: {error}")
                 self.on_log("Loaded on CUDA without CPU offload")
         else:
             pipe.to("cpu")
