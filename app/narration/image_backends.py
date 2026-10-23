@@ -234,6 +234,10 @@ class DiffusersImageBackend(ImageBackend):
             pipe.enable_vae_slicing()
         except Exception:  # noqa: BLE001 - optional optimisation
             pass
+        try:
+            pipe.enable_attention_slicing()
+        except Exception:  # noqa: BLE001 - optional optimisation
+            pass
 
         if self.device == "cuda":
             if self.settings.narration_image_cpu_offload:
@@ -241,6 +245,7 @@ class DiffusersImageBackend(ImageBackend):
                 self.on_log("Enabled model CPU offload (low-VRAM safe)")
             else:
                 pipe.to("cuda")
+                self.on_log("Loaded on CUDA without CPU offload")
         else:
             pipe.to("cpu")
             self.on_log("WARNING: diffusion is running on CPU; expect very slow image generation")

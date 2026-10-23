@@ -25,6 +25,14 @@ from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
+# Keep TensorFlow out of the process: Colab has it installed, and on a 12.7 GB
+# runtime the extra copy competes with SDXL/IP-Adapter weights.  These must be
+# set before transformers/diffusers are imported.
+os.environ.setdefault("USE_TF", "0")
+os.environ.setdefault("TRANSFORMERS_NO_TF", "1")
+os.environ.setdefault("USE_FLAX", "0")
+os.environ.setdefault("PYTORCH_CUDA_ALLOC_CONF", "expandable_segments:True")
+
 REPO_ROOT = Path(__file__).resolve().parents[1]
 # Running a script by absolute path puts its own folder (deploy/) on sys.path,
 # not the repository root. Add the root before importing any app.* module.
@@ -49,18 +57,23 @@ def state_dir() -> Path:
     return content if content.is_dir() else REPO_ROOT
 
 
-def launch_background(mode: str) -> int:
+def launch_background(mode: str, follow: bool = False) -> int:
     """Detach a long render so a cell interrupt cannot kill it.
 
-    Colab can send SIGINT to the foreground process group when a cell is
-    interrupted or the browser reconnects. The child gets a new session, its
-    own log file, and ignores SIGINT; use the printed PID to stop it.
+    The child gets a new session and its own log.  With ``--follow`` the
+    current cell stays alive while it streams that log, which also stops
+    Colab from treating the runtime as idle and reaping background children.
     """
+    import signal
+    import time
+
     state = state_dir()
     log_path = state / f"narration_{mode}.log"
     pid_path = state / f"narration_{mode}.pid"
     command = [sys.executable, str(Path(__file__).resolve())]
-    command.extend(arg for arg in sys.argv[1:] if arg != "--background")
+    command.extend(
+        arg for arg in sys.argv[1:]
+        if arg not in ("--background", "--follow"))
     env = os.environ.copy()
     env["NARRATION_BACKGROUND_CHILD"] = "1"
     with log_path.open("wb") as log_file:
@@ -76,10 +89,34 @@ def launch_background(mode: str) -> int:
     pid_path.write_text(str(process.pid), encoding="utf-8")
     print(f"Started {mode} in background (PID {process.pid}).", flush=True)
     print(f"Log: {log_path}", flush=True)
-    print(f"Monitor: !tail -n 80 {log_path}", flush=True)
-    print(f"Follow:  !tail -f {log_path}", flush=True)
-    print(f"Stop:    !kill {process.pid}", flush=True)
-    return 0
+    print(f"Stop: !kill {process.pid}", flush=True)
+    if not follow:
+        print(f"Monitor: !tail -n 80 {log_path}", flush=True)
+        return 0
+
+    # This process only reads the log.  If Colab interrupts the cell, the
+    # render child survives in its own session; the follower can also ignore
+    # SIGINT so it keeps streaming until the child exits.
+    try:
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+    except (AttributeError, ValueError):
+        pass
+    print("Following live. Ctrl+C will not stop the render; use the kill command.",
+          flush=True)
+    with log_path.open("r", encoding="utf-8", errors="replace") as reader:
+        while True:
+            line = reader.readline()
+            if line:
+                print(line, end="", flush=True)
+                continue
+            code = process.poll()
+            if code is not None:
+                remainder = reader.read()
+                if remainder:
+                    print(remainder, end="", flush=True)
+                print(f"\n[background process exited with code {code}]", flush=True)
+                return int(code)
+            time.sleep(0.5)
 
 
 def start_heartbeat() -> None:
@@ -187,7 +224,9 @@ def configure(width: int, height: int, fps: int, seed: int, model: Path,
         "NARRATION_IMAGE_MODEL": "stabilityai/stable-diffusion-xl-base-1.0",
         "NARRATION_IMAGE_DEVICE": "cuda",
         "NARRATION_IMAGE_DTYPE": "float16",
-        "NARRATION_IMAGE_CPU_OFFLOAD": "true",
+        # T4 has enough VRAM for SDXL + IP-Adapter at fp16.  Keeping the
+        # weights in the 12.7 GB system RAM is what was getting OOM-killed.
+        "NARRATION_IMAGE_CPU_OFFLOAD": "false",
         "NARRATION_IMAGE_WIDTH": 1024,
         "NARRATION_IMAGE_HEIGHT": 576,
         "NARRATION_IMAGE_STEPS": 26,
@@ -274,11 +313,15 @@ def main() -> int:
     parser.add_argument("--no-install", action="store_true")
     parser.add_argument("--background", action="store_true",
                         help="Detach the run into a log; survives cell interrupts")
+    parser.add_argument("--follow", action="store_true",
+                        help="Stay in the cell and stream the background log")
     args = parser.parse_args()
     args.job_id = (args.job_id or "").strip()
 
     if args.background:
-        return launch_background(args.mode)
+        return launch_background(args.mode, follow=args.follow)
+    if args.follow:
+        parser.error("--follow requires --background")
     if os.getenv("NARRATION_BACKGROUND_CHILD") == "1":
         import signal
         signal.signal(signal.SIGINT, signal.SIG_IGN)
