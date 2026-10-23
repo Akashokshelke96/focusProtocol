@@ -6,6 +6,8 @@ Paste these two lines into a fresh Colab cell (T4 GPU runtime):
     !python /content/focusProtocol/deploy/colab_bootstrap.py --mode smoke
 
 Then run ``--mode full`` for the real video, or ``--mode resume --job-id ...``.
+Add ``--background`` to detach long runs into ``/content/narration_<mode>.log``;
+that keeps the render alive if Colab interrupts the foreground cell.
 The script changes into the repository root itself, so no ``%cd`` is needed.
 It installs the narration extras, downloads the Piper voice, writes a Colab
 ``.env``, and runs the same ``NarrationStudio`` production path as the
@@ -19,6 +21,7 @@ import os
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
 
@@ -38,6 +41,59 @@ SMOKE_TOPIC = "What did ancient humans actually do all day?"
 def run(command: list) -> None:
     print("$", " ".join(str(part) for part in command), flush=True)
     subprocess.run([str(part) for part in command], check=True, text=True)
+
+
+def state_dir() -> Path:
+    """Prefer Colab's /content, but keep local invocation working."""
+    content = Path("/content")
+    return content if content.is_dir() else REPO_ROOT
+
+
+def launch_background(mode: str) -> int:
+    """Detach a long render so a cell interrupt cannot kill it.
+
+    Colab can send SIGINT to the foreground process group when a cell is
+    interrupted or the browser reconnects. The child gets a new session, its
+    own log file, and ignores SIGINT; use the printed PID to stop it.
+    """
+    state = state_dir()
+    log_path = state / f"narration_{mode}.log"
+    pid_path = state / f"narration_{mode}.pid"
+    command = [sys.executable, str(Path(__file__).resolve())]
+    command.extend(arg for arg in sys.argv[1:] if arg != "--background")
+    env = os.environ.copy()
+    env["NARRATION_BACKGROUND_CHILD"] = "1"
+    with log_path.open("wb") as log_file:
+        process = subprocess.Popen(
+            command,
+            cwd=str(REPO_ROOT),
+            stdin=subprocess.DEVNULL,
+            stdout=log_file,
+            stderr=subprocess.STDOUT,
+            start_new_session=(os.name == "posix"),
+            env=env,
+        )
+    pid_path.write_text(str(process.pid), encoding="utf-8")
+    print(f"Started {mode} in background (PID {process.pid}).", flush=True)
+    print(f"Log: {log_path}", flush=True)
+    print(f"Monitor: !tail -n 80 {log_path}", flush=True)
+    print(f"Follow:  !tail -f {log_path}", flush=True)
+    print(f"Stop:    !kill {process.pid}", flush=True)
+    return 0
+
+
+def start_heartbeat() -> None:
+    """Keep the log alive while image generation is silent."""
+    import threading
+    import time
+
+    def beat() -> None:
+        while True:
+            time.sleep(60)
+            print(f"[heartbeat] {datetime.now().strftime('%H:%M:%S')} pipeline running",
+                  flush=True)
+
+    threading.Thread(target=beat, daemon=True, name="narration-heartbeat").start()
 
 
 def write_env(values: dict) -> Path:
@@ -200,7 +256,8 @@ def saved_render_config(job_id: str) -> dict:
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Colab one-command narration runner")
+    parser = argparse.ArgumentParser(
+        description="Colab one-command narration runner", allow_abbrev=False)
     parser.add_argument("--mode", choices=("smoke", "full", "resume"), default="smoke")
     parser.add_argument("--topic", default=SMOKE_TOPIC)
     parser.add_argument("--minutes", type=float, default=10.0)
@@ -215,7 +272,27 @@ def main() -> int:
                         help="Defaults to 15, or the job's saved FPS on resume")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--no-install", action="store_true")
+    parser.add_argument("--background", action="store_true",
+                        help="Detach the run into a log; survives cell interrupts")
     args = parser.parse_args()
+    args.job_id = (args.job_id or "").strip()
+
+    if args.background:
+        return launch_background(args.mode)
+    if os.getenv("NARRATION_BACKGROUND_CHILD") == "1":
+        import signal
+        signal.signal(signal.SIGINT, signal.SIG_IGN)
+        print("Background child: SIGINT ignored; use the printed kill command to stop.",
+              flush=True)
+        start_heartbeat()
+
+    if args.mode == "full" and args.script.strip() and not args.job_id:
+        args.job_id = (
+            datetime.now().strftime("%Y%m%d_%H%M%S_%f") + "_narration_001")
+    if args.job_id:
+        print("Job ID:", args.job_id, flush=True)
+        (state_dir() / "last_job_id.txt").write_text(
+            args.job_id + "\n", encoding="utf-8")
 
     os.chdir(REPO_ROOT)
     if str(REPO_ROOT) not in sys.path:
